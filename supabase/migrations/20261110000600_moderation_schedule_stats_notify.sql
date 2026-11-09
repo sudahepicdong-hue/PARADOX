@@ -341,7 +341,9 @@ begin
   perform net.http_post(
     url := v_url,
     body := jsonb_build_object('event', p_event, 'data', p_data),
-    headers := jsonb_build_object('Content-Type', 'application/json', 'x-webhook-secret', v_secret)
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-webhook-secret', v_secret),
+    -- fungsi server bisa butuh beberapa detik untuk "bangun" setelah lama tidak dipakai
+    timeout_milliseconds := 15000
   );
 exception when others then
   raise warning 'notify_admin gagal: %', sqlerrm;

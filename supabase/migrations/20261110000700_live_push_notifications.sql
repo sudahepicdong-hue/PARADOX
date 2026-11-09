@@ -89,7 +89,8 @@ begin
   perform net.http_post(
     url := v_base || '/' || p_name,
     body := p_body,
-    headers := jsonb_build_object('Content-Type', 'application/json', 'x-webhook-secret', v_secret)
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-webhook-secret', v_secret),
+    timeout_milliseconds := 15000
   );
 exception when others then
   raise warning 'call_function % gagal: %', p_name, sqlerrm;
