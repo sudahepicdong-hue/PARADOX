@@ -11,7 +11,8 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    // Library live streaming (LiveKit) ±530 KB, tapi hanya dimuat saat ruang live dibuka
-    chunkSizeWarningLimit: 600,
+    // File utama (React + Supabase) ±620 KB; library live (LiveKit) ±540 KB dan
+    // hanya dimuat saat ruang live dibuka. Peringatan muncul kalau jauh di atas itu.
+    chunkSizeWarningLimit: 700,
   },
 });

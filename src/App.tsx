@@ -23,6 +23,8 @@ import { AccountModal } from './components/AccountModal';
 import { AgeGate, hasConfirmedAge } from './components/AgeGate';
 import { UpcomingLives } from './components/UpcomingLives';
 import { InstallPrompt } from './components/InstallPrompt';
+import { PushOptInBanner, wasPushOptInDismissed } from './components/PushOptInBanner';
+import { getPushState } from './lib/push';
 import { Radio, Sparkles } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { loadAccount, signOut } from './lib/auth';
@@ -74,6 +76,7 @@ export default function App() {
   const publicTalents = talentsView.filter(db.isPubliclyVisible);
 
   const [isAccountOpen, setIsAccountOpen] = useState(false);
+  const [pushOptInTalent, setPushOptInTalent] = useState<string | null>(null);
   const [ageConfirmed, setAgeConfirmed] = useState(hasConfirmedAge);
   const myTalent = currentUser?.role === 'talent' ? talents.find((t) => t.id === currentUser.talentId) : undefined;
 
@@ -230,6 +233,21 @@ export default function App() {
     showToast('Profil talent Anda sudah dihapus.');
   };
 
+  // Dibuka dari notifikasi push: /?live=<talentId> -> langsung buka ruang live talent itu
+  const deepLinkHandled = React.useRef(false);
+  useEffect(() => {
+    if (deepLinkHandled.current || isDataLoading) return;
+    const params = new URLSearchParams(window.location.search);
+    const liveId = params.get('live');
+    if (!liveId) return;
+    deepLinkHandled.current = true;
+    const t = talentsView.find((x) => x.id === liveId);
+    if (t) setSelectedLiveTalent(t);
+    params.delete('live');
+    const qs = params.toString();
+    window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash);
+  }, [isDataLoading, talentsView]);
+
   // Statistik: catat kunjungan profil (sekali per talent per sesi browser)
   useEffect(() => {
     if (selectedDetailTalent) db.recordTalentView(selectedDetailTalent.id);
@@ -267,6 +285,16 @@ export default function App() {
 
     try {
       await db.setLike(currentUser.id, talentId, willLike);
+      // Tawarkan notifikasi live setelah menyukai talent (sekali, kalau belum aktif)
+      if (willLike && !wasPushOptInDismissed()) {
+        getPushState()
+          .then((s) => {
+            if (s === 'off' || s === 'ios-needs-install') {
+              setPushOptInTalent(talents.find((t) => t.id === talentId)?.name ?? 'talent ini');
+            }
+          })
+          .catch(() => {});
+      }
     } catch (e) {
       // Batalkan perubahan tampilan kalau gagal
       setLikedTalentIds((prev) => (willLike ? prev.filter((id) => id !== talentId) : [...prev, talentId]));
@@ -615,6 +643,9 @@ export default function App() {
 
       {/* Laporkan profil / ulasan */}
       {reportTarget && <ReportModal target={reportTarget} onClose={() => setReportTarget(null)} />}
+
+      {/* Ajakan notifikasi live setelah menyukai talent */}
+      {pushOptInTalent && <PushOptInBanner talentName={pushOptInTalent} onClose={() => setPushOptInTalent(null)} />}
 
       {/* Ajakan install website sebagai aplikasi di HP */}
       <InstallPrompt brandName={siteSettings.brandName} />

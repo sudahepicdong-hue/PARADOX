@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Save, Download, Trash2, UserCircle } from 'lucide-react';
 import { UserAccount } from '../types/talent';
 import { updateMyName, exportMyData, deleteMyAccount } from '../lib/db';
+import { PushToggle } from './PushToggle';
 
 interface AccountModalProps {
   user: UserAccount;
@@ -98,6 +99,11 @@ export const AccountModal: React.FC<AccountModalProps> = ({ user, onClose, onNam
             </button>
           </div>
         </form>
+
+        <div className="space-y-2">
+          <div className="text-xs text-slate-300 font-semibold">Notifikasi live di perangkat ini</div>
+          <PushToggle />
+        </div>
 
         <div className="space-y-2">
           <div className="text-xs text-slate-300 font-semibold">Data pribadi saya</div>

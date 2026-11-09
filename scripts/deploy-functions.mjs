@@ -9,13 +9,13 @@
 //   TELEGRAM_BOT_TOKEN, TELEGRAM_ADMIN_CHAT_ID  (notifikasi Telegram ke admin)
 //   PUBLIC_SITE_URL                             (link website di pesan Telegram)
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createECDH } from 'node:crypto';
 import postgres from 'postgres';
 
-const FUNCTIONS = ['admin-talent-account', 'livekit-token', 'delete-account', 'live-moderate', 'notify-admin'];
+const FUNCTIONS = ['admin-talent-account', 'livekit-token', 'delete-account', 'live-moderate', 'notify-admin', 'push-live'];
 const SECRET_KEYS = [
   'LIVEKIT_URL',
   'LIVEKIT_API_KEY',
@@ -23,7 +23,30 @@ const SECRET_KEYS = [
   'TELEGRAM_BOT_TOKEN',
   'TELEGRAM_ADMIN_CHAT_ID',
   'PUBLIC_SITE_URL',
+  'VAPID_PUBLIC_KEY',
+  'VAPID_PRIVATE_KEY',
 ];
+
+// Kunci notifikasi push (VAPID): dibuat SEKALI lalu disimpan di .env.
+// Jangan diganti lagi setelahnya — langganan notifikasi yang sudah ada akan berhenti bekerja.
+if (!process.env.VAPID_PUBLIC_KEY?.trim() || !process.env.VAPID_PRIVATE_KEY?.trim()) {
+  const ecdh = createECDH('prime256v1');
+  ecdh.generateKeys();
+  const priv = ecdh.getPrivateKey();
+  const priv32 = Buffer.concat([Buffer.alloc(32 - priv.length), priv]);
+  process.env.VAPID_PUBLIC_KEY = ecdh.getPublicKey().toString('base64url');
+  process.env.VAPID_PRIVATE_KEY = priv32.toString('base64url');
+  appendFileSync(
+    '.env',
+    '\n# --- Kunci notifikasi push (dibuat otomatis, JANGAN diganti / dihapus) ---\n' +
+      `VAPID_PUBLIC_KEY="${process.env.VAPID_PUBLIC_KEY}"\n` +
+      `VAPID_PRIVATE_KEY="${process.env.VAPID_PRIVATE_KEY}"\n`
+  );
+  console.log('\n> Kunci notifikasi push (VAPID) baru dibuat dan disimpan di .env');
+}
+if (!process.env.PUBLIC_SITE_URL?.trim()) {
+  console.warn('! PUBLIC_SITE_URL belum diisi — notifikasi push live dimatikan.');
+}
 
 const url = (process.env.VITE_SUPABASE_URL ?? '').replace(/\/+$/, '');
 const ref = url.match(/^https:\/\/([a-z0-9]+)\.supabase\.co$/i)?.[1];
@@ -87,7 +110,9 @@ if (process.env.SUPABASE_DB_URL) {
     await sql`
       insert into private.app_config (key, value) values
         ('notify_url', ${`${url}/functions/v1/notify-admin`}),
-        ('notify_secret', ${notifySecret})
+        ('functions_base_url', ${`${url}/functions/v1`}),
+        ('notify_secret', ${notifySecret}),
+        ('vapid_public_key', ${process.env.VAPID_PUBLIC_KEY.trim()})
       on conflict (key) do update set value = excluded.value`;
   } catch (e) {
     console.warn(`! Gagal menyimpan konfigurasi notifikasi (jalankan npm run db:setup dulu?): ${e.message}`);
