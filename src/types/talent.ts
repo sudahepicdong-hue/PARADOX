@@ -9,6 +9,7 @@ export interface MediaItem {
 export interface Review {
   id: string;
   talentId: string;
+  userId?: string;
   userName: string;
   rating: number; // 1 to 5
   comment: string;
@@ -48,6 +49,31 @@ export interface Talent {
   liveStreamType?: 'camera' | 'video' | 'custom_url';
   liveStreamUrl?: string;
   liveViewersCount?: number;
+  isActive?: boolean; // false = disembunyikan dari katalog
+  idVerifiedAt?: string; // diisi setelah admin memverifikasi dokumen identitas 18+
+  liveHeartbeatAt?: string; // terakhir kali browser talent memberi tanda masih siaran
+}
+
+export interface TalentDocument {
+  id: string;
+  talentId: string;
+  docType: 'ktp' | 'paspor' | 'sim' | 'lainnya';
+  birthDate: string; // YYYY-MM-DD
+  storagePath: string;
+  createdAt: string;
+}
+
+export type ReportReason = 'underage' | 'coercion' | 'fake' | 'inappropriate' | 'spam' | 'other';
+
+export interface Report {
+  id: string;
+  targetType: 'talent' | 'review';
+  talentId?: string;
+  reviewId?: string;
+  reason: ReportReason;
+  details: string;
+  status: 'open' | 'resolved' | 'dismissed';
+  createdAt: string;
 }
 
 export interface UserAccount {

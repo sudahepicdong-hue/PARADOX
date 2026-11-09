@@ -15,8 +15,11 @@ import {
   Play,
   Volume2,
   VolumeX,
-  Radio
+  Radio,
+  Flag,
+  Trash2
 } from 'lucide-react';
+import type { ReportTarget } from './ReportModal';
 
 interface TalentDetailModalProps {
   talent: Talent;
@@ -25,9 +28,11 @@ interface TalentDetailModalProps {
   onToggleLike: (talentId: string) => void;
   isLiked: boolean;
   currentUser: UserAccount | null;
-  onAddReview: (talentId: string, rating: number, comment: string) => void;
+  onAddReview: (talentId: string, rating: number, comment: string) => Promise<void>;
   onOpenLive?: (talent: Talent) => void;
   brandName?: string;
+  onReport: (target: ReportTarget) => void;
+  onDeleteReview: (reviewId: string) => void;
 }
 
 export const TalentDetailModal: React.FC<TalentDetailModalProps> = ({
@@ -39,7 +44,9 @@ export const TalentDetailModal: React.FC<TalentDetailModalProps> = ({
   currentUser,
   onAddReview,
   onOpenLive,
-  brandName = 'PARADOX'
+  brandName = 'PARADOX',
+  onReport,
+  onDeleteReview
 }) => {
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
   const [copiedUsername, setCopiedUsername] = useState(false);
@@ -50,6 +57,8 @@ export const TalentDetailModal: React.FC<TalentDetailModalProps> = ({
   const [hoverRating, setHoverRating] = useState(0);
   const [newComment, setNewComment] = useState('');
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
+  const [reviewError, setReviewError] = useState('');
+  const [isReviewSaving, setIsReviewSaving] = useState(false);
 
   // Selected booking preset message for Telegram
   const [selectedTopic, setSelectedTopic] = useState<'jadwal' | 'dinner' | 'party' | 'custom'>('jadwal');
@@ -82,13 +91,21 @@ export const TalentDetailModal: React.FC<TalentDetailModalProps> = ({
     setActiveMediaIndex((prev) => (prev < talent.media.length - 1 ? prev + 1 : 0));
   };
 
-  const handleReviewSubmit = (e: React.FormEvent) => {
+  const handleReviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newComment.trim()) return;
-    onAddReview(talent.id, newRating, newComment.trim());
-    setNewComment('');
-    setReviewSubmitted(true);
-    setTimeout(() => setReviewSubmitted(false), 4000);
+    setReviewError('');
+    setIsReviewSaving(true);
+    try {
+      await onAddReview(talent.id, newRating, newComment.trim());
+      setNewComment('');
+      setReviewSubmitted(true);
+      setTimeout(() => setReviewSubmitted(false), 4000);
+    } catch (err) {
+      setReviewError(err instanceof Error ? err.message : 'Gagal mengirim ulasan. Coba lagi.');
+    } finally {
+      setIsReviewSaving(false);
+    }
   };
 
   const talentReviews = reviews.filter((r) => r.talentId === talent.id);
@@ -123,13 +140,23 @@ export const TalentDetailModal: React.FC<TalentDetailModalProps> = ({
             )}
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
-            aria-label="Tutup modal"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onReport({ targetType: 'talent', talentId: talent.id, label: `Profil ${talent.name}` })}
+              className="px-2.5 py-1.5 text-xs text-slate-400 hover:text-rose-300 rounded-lg hover:bg-white/10 transition-colors flex items-center gap-1.5 cursor-pointer"
+              title="Laporkan profil ini"
+            >
+              <Flag className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Laporkan</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
+              aria-label="Tutup modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Scrollable Body */}
@@ -415,7 +442,7 @@ export const TalentDetailModal: React.FC<TalentDetailModalProps> = ({
             {/* Write Review Form */}
             <form onSubmit={handleReviewSubmit} className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-4">
               <h4 className="text-sm font-semibold text-slate-200">
-                {currentUser ? `Tulis Ulasan sebagai ${currentUser.name}` : 'Beri Rating & Ulasan Pengalaman'}
+                {currentUser ? `Tulis Ulasan sebagai ${currentUser.name}` : 'Masuk untuk Memberi Rating & Ulasan'}
               </h4>
 
               {/* Star selector */}
@@ -460,15 +487,22 @@ export const TalentDetailModal: React.FC<TalentDetailModalProps> = ({
 
               <div className="flex items-center justify-between">
                 <span className="text-[11px] text-slate-400">
-                  Ulasan akan langsung tampil di profil talent.
+                  Satu ulasan per akun. Mengirim lagi akan mengganti ulasan lama Anda.
                 </span>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-lg text-xs font-semibold text-black bg-gradient-to-r from-amber-300 to-amber-500 hover:brightness-110 transition-all shadow-md shadow-amber-500/20"
+                  disabled={isReviewSaving}
+                  className="px-5 py-2.5 rounded-lg text-xs font-semibold text-black bg-gradient-to-r from-amber-300 to-amber-500 hover:brightness-110 transition-all shadow-md shadow-amber-500/20 disabled:opacity-60 disabled:cursor-wait"
                 >
-                  Kirim Ulasan & Rating
+                  {isReviewSaving ? 'Mengirim...' : 'Kirim Ulasan & Rating'}
                 </button>
               </div>
+
+              {reviewError && (
+                <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+                  {reviewError}
+                </div>
+              )}
 
               {reviewSubmitted && (
                 <div className="p-3 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs">
@@ -508,6 +542,32 @@ export const TalentDetailModal: React.FC<TalentDetailModalProps> = ({
                     </div>
 
                     <p className="text-xs text-slate-300 leading-relaxed">{rev.comment}</p>
+
+                    <div className="flex items-center justify-end gap-3 text-[11px]">
+                      <button
+                        onClick={() =>
+                          onReport({
+                            targetType: 'review',
+                            talentId: talent.id,
+                            reviewId: rev.id,
+                            label: `Ulasan dari ${rev.userName}`
+                          })
+                        }
+                        className="text-slate-500 hover:text-rose-300 flex items-center gap-1 cursor-pointer"
+                      >
+                        <Flag className="w-3 h-3" />
+                        Laporkan
+                      </button>
+                      {(currentUser?.role === 'admin' || (currentUser && currentUser.id === rev.userId)) && (
+                        <button
+                          onClick={() => onDeleteReview(rev.id)}
+                          className="text-slate-500 hover:text-rose-400 flex items-center gap-1 cursor-pointer"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          Hapus
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))
               )}
