@@ -23,7 +23,9 @@ const ACTION_LABELS: Record<string, string> = {
   'report.resolved': 'menyelesaikan laporan',
   'report.dismissed': 'mengabaikan laporan',
   'report.open': 'membuka ulang laporan',
-  'settings.update': 'mengubah'
+  'settings.update': 'mengubah',
+  'live.ban': 'memblokir penonton dari siaran',
+  'live.unban': 'membuka blokir penonton di siaran'
 };
 
 const describe = (e: AuditEntry) => {
@@ -39,6 +41,7 @@ const detailText = (e: AuditEntry) => {
   if (d.doc_type) return `Jenis: ${String(d.doc_type).toUpperCase()}`;
   if (d.comment) return `"${d.comment}"`;
   if (d.age) return `Usia dari dokumen: ${d.age} th`;
+  if (d.viewer) return `Penonton: ${d.viewer}`;
   return '';
 };
 

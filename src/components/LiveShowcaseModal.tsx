@@ -1,10 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Room, RoomEvent, Track, RemoteTrack, RemoteParticipant } from 'livekit-client';
+import { Room, RoomEvent, Track, RemoteTrack, RemoteParticipant, DisconnectReason } from 'livekit-client';
 import { X, Radio, Users, Heart, Volume2, Loader2, User as UserIcon } from 'lucide-react';
 import { Talent } from '../types/talent';
-import { getLiveToken } from '../lib/db';
-import { ChatMessage, appendMessage, decodeData, encodeData, isHostParticipant, newMessageId } from '../lib/live';
-import { LiveChat } from './LiveChat';
+import { getLiveToken, moderateLive } from '../lib/db';
+import {
+  ChatMessage,
+  appendMessage,
+  removeMessage,
+  decodeData,
+  encodeData,
+  isHostParticipant,
+  isModeratorParticipant,
+  newMessageId
+} from '../lib/live';
+import { LiveChat, ChatModeration } from './LiveChat';
 
 interface LiveShowcaseModalProps {
   talent: Talent;
@@ -16,6 +25,7 @@ interface LiveShowcaseModalProps {
   canChat: boolean; // sudah login?
   myName?: string;
   onRequestLogin: () => void;
+  isModerator?: boolean; // admin yang menonton: boleh hapus pesan / keluarkan / blokir
 }
 
 type Status = 'connecting' | 'waiting' | 'playing' | 'ended' | 'error';
@@ -37,7 +47,8 @@ export const LiveShowcaseModal: React.FC<LiveShowcaseModalProps> = ({
   brandName = 'PARADOX',
   canChat,
   myName,
-  onRequestLogin
+  onRequestLogin,
+  isModerator = false
 }) => {
   const [status, setStatus] = useState<Status>(talent.isLive ? 'connecting' : 'ended');
   const [error, setError] = useState('');
@@ -103,15 +114,26 @@ export const LiveShowcaseModal: React.FC<LiveShowcaseModalProps> = ({
         const data = decodeData(payload);
         if (!data) return;
         if (data.type === 'heart') popHeart();
-        else
+        else if (data.type === 'delete') {
+          // Hanya host / moderator yang boleh menghapus pesan orang lain
+          if (isModeratorParticipant(participant)) setMessages((prev) => removeMessage(prev, data.id));
+        } else
           setMessages((prev) =>
             appendMessage(prev, {
-              id: newMessageId(),
+              id: data.id,
               name: participant?.name || 'Tamu',
               text: data.text,
-              isHost: isHostParticipant(participant)
+              isHost: isHostParticipant(participant),
+              senderIdentity: participant?.identity
             })
           );
+      })
+      .on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
+        if (cancelled) return;
+        if (reason === DisconnectReason.PARTICIPANT_REMOVED) {
+          setError('Anda dikeluarkan dari siaran ini oleh host.');
+          setStatus('error');
+        }
       });
 
     (async () => {
@@ -125,7 +147,8 @@ export const LiveShowcaseModal: React.FC<LiveShowcaseModalProps> = ({
         if (!hostHasVideo()) setStatus((s) => (s === 'playing' ? s : 'waiting'));
       } catch (e) {
         if (!cancelled) {
-          setError(errorText(e));
+          const msg = errorText(e);
+          setError(msg.includes('diblokir') ? msg : `Gagal memuat siaran: ${msg}`);
           setStatus('error');
         }
       }
@@ -146,8 +169,38 @@ export const LiveShowcaseModal: React.FC<LiveShowcaseModalProps> = ({
   const sendChat = (text: string) => {
     const room = roomRef.current;
     if (!room) return;
-    room.localParticipant.publishData(encodeData({ type: 'chat', text }), { reliable: true }).catch(() => {});
-    setMessages((prev) => appendMessage(prev, { id: newMessageId(), name: myName || 'Saya', text, isHost: false, isMine: true }));
+    const id = newMessageId();
+    room.localParticipant.publishData(encodeData({ type: 'chat', id, text }), { reliable: true }).catch(() => {});
+    setMessages((prev) => appendMessage(prev, { id, name: myName || 'Saya', text, isHost: false, isMine: true }));
+  };
+
+  // Moderasi oleh admin yang sedang menonton
+  const deleteForAll = (ids: string[]) => {
+    for (const id of ids) {
+      roomRef.current?.localParticipant.publishData(encodeData({ type: 'delete', id }), { reliable: true }).catch(() => {});
+    }
+    setMessages((prev) => prev.filter((m) => !ids.includes(m.id)));
+  };
+
+  const moderation: ChatModeration = {
+    onDelete: (m) => deleteForAll([m.id]),
+    onKick: async (m) => {
+      if (!m.senderIdentity || !confirm(`Keluarkan ${m.name} dari siaran?`)) return;
+      try {
+        await moderateLive(talent.id, 'kick', m.senderIdentity, m.name);
+      } catch (e) {
+        alert(errorText(e));
+      }
+    },
+    onBan: async (m) => {
+      if (!m.senderIdentity || !confirm(`Blokir ${m.name} dari siaran ${talent.name}?`)) return;
+      try {
+        await moderateLive(talent.id, 'ban', m.senderIdentity, m.name);
+        deleteForAll(messages.filter((x) => x.senderIdentity === m.senderIdentity).map((x) => x.id));
+      } catch (e) {
+        alert(errorText(e));
+      }
+    }
   };
 
   const sendHeart = () => {
@@ -218,7 +271,7 @@ export const LiveShowcaseModal: React.FC<LiveShowcaseModalProps> = ({
                         </button>
                       </>
                     )}
-                    {status === 'error' && <p className="text-sm text-rose-300">Gagal memuat siaran: {error}</p>}
+                    {status === 'error' && <p className="text-sm text-rose-300">{error}</p>}
                   </div>
                 </div>
               )}
@@ -270,6 +323,7 @@ export const LiveShowcaseModal: React.FC<LiveShowcaseModalProps> = ({
               disabled={status !== 'playing'}
               onSend={sendChat}
               onRequestLogin={onRequestLogin}
+              moderation={isModerator && status === 'playing' ? moderation : undefined}
             />
           </div>
         </div>

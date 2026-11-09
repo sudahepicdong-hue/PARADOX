@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { X, Save, Trash2, Upload, Eye, EyeOff, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { Talent, MediaItem } from '../types/talent';
 import { uploadMedia } from '../lib/db';
+import { MyDocumentsSection } from './MyDocumentsSection';
+import { LiveScheduleManager } from './LiveScheduleManager';
+import { LiveBansList } from './LiveBansList';
 
 interface TalentProfileModalProps {
   talent: Talent;
@@ -142,7 +145,8 @@ export const TalentProfileModal: React.FC<TalentProfileModalProps> = ({ talent, 
           <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300 flex items-center gap-2">
             <ShieldAlert className="w-4 h-4 shrink-0" />
             <span>
-              Profil Anda belum diverifikasi, jadi belum tampil di katalog. Hubungi admin untuk verifikasi identitas (wajib 18+).
+              Profil Anda belum diverifikasi, jadi belum tampil di katalog. Upload dokumen identitas di bagian bawah halaman ini,
+              lalu tunggu admin memverifikasi (wajib 18+).
             </span>
           </div>
         )}
@@ -272,6 +276,10 @@ export const TalentProfileModal: React.FC<TalentProfileModalProps> = ({ talent, 
             </button>
           </div>
         </form>
+
+        <MyDocumentsSection talentId={talent.id} isVerified={Boolean(talent.idVerifiedAt)} />
+        <LiveScheduleManager talentId={talent.id} />
+        <LiveBansList talentId={talent.id} />
 
         {/* Hapus profil */}
         <div className="p-4 rounded-xl border border-rose-500/30 bg-rose-500/5 space-y-3">

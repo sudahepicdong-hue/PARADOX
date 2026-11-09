@@ -12,9 +12,18 @@ import {
 } from 'livekit-client';
 import { X, Mic, MicOff, Video, VideoOff, Radio, Users, Heart, AlertCircle, Loader2 } from 'lucide-react';
 import { Talent } from '../types/talent';
-import { getLiveToken, sendLiveHeartbeat } from '../lib/db';
-import { ChatMessage, appendMessage, decodeData, encodeData, isHostParticipant, newMessageId } from '../lib/live';
-import { LiveChat } from './LiveChat';
+import { getLiveToken, sendLiveHeartbeat, moderateLive, recordLiveViewers } from '../lib/db';
+import {
+  ChatMessage,
+  appendMessage,
+  removeMessage,
+  decodeData,
+  encodeData,
+  isHostParticipant,
+  isModeratorParticipant,
+  newMessageId
+} from '../lib/live';
+import { LiveChat, ChatModeration } from './LiveChat';
 
 interface LiveBroadcastModalProps {
   talents: Talent[];
@@ -49,6 +58,8 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
   const [viewers, setViewers] = useState(0);
   const [hearts, setHearts] = useState(0);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [notice, setNotice] = useState<string | null>(null);
+  const peakRef = useRef(0);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const tracksRef = useRef<LocalTrack[]>([]);
@@ -96,6 +107,12 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
       if (!isHostParticipant(p)) count++;
     });
     setViewers(count);
+    // Catat rekor penonton hari ini (untuk statistik admin)
+    const talentId = liveTalentRef.current;
+    if (talentId && count > peakRef.current) {
+      peakRef.current = count;
+      recordLiveViewers(talentId, count).catch(() => {});
+    }
   };
 
   const startLive = async () => {
@@ -104,6 +121,8 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
     setPhase('connecting');
     setMessages([]);
     setHearts(0);
+    setNotice(null);
+    peakRef.current = 0;
 
     const room = new Room({ adaptiveStream: true, dynacast: true });
     try {
@@ -116,13 +135,17 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
           const data = decodeData(payload);
           if (!data) return;
           if (data.type === 'heart') setHearts((h) => h + 1);
-          else
+          else if (data.type === 'delete') {
+            // Admin (moderator) yang ikut menonton juga boleh menghapus pesan
+            if (isModeratorParticipant(participant)) setMessages((prev) => removeMessage(prev, data.id));
+          } else
             setMessages((prev) =>
               appendMessage(prev, {
-                id: newMessageId(),
+                id: data.id,
                 name: participant?.name || 'Tamu',
                 text: data.text,
-                isHost: isHostParticipant(participant)
+                isHost: isHostParticipant(participant),
+                senderIdentity: participant?.identity
               })
             );
         })
@@ -202,10 +225,44 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
   const sendChat = (text: string) => {
     const room = roomRef.current;
     if (!room) return;
-    room.localParticipant.publishData(encodeData({ type: 'chat', text }), { reliable: true }).catch(() => {});
-    setMessages((prev) =>
-      appendMessage(prev, { id: newMessageId(), name: selectedTalent?.name || 'Host', text, isHost: true, isMine: true })
-    );
+    const id = newMessageId();
+    room.localParticipant.publishData(encodeData({ type: 'chat', id, text }), { reliable: true }).catch(() => {});
+    setMessages((prev) => appendMessage(prev, { id, name: selectedTalent?.name || 'Host', text, isHost: true, isMine: true }));
+  };
+
+  // Hapus pesan untuk semua orang di ruang live
+  const deleteForAll = (ids: string[]) => {
+    const room = roomRef.current;
+    for (const id of ids) {
+      room?.localParticipant.publishData(encodeData({ type: 'delete', id }), { reliable: true }).catch(() => {});
+    }
+    setMessages((prev) => prev.filter((m) => !ids.includes(m.id)));
+  };
+
+  const moderation: ChatModeration = {
+    onDelete: (m) => deleteForAll([m.id]),
+    onKick: async (m) => {
+      if (!liveTalentRef.current || !m.senderIdentity) return;
+      if (!confirm(`Keluarkan ${m.name} dari siaran? (Masih bisa masuk lagi)`)) return;
+      try {
+        await moderateLive(liveTalentRef.current, 'kick', m.senderIdentity, m.name);
+        setNotice(`${m.name} dikeluarkan dari siaran.`);
+      } catch (e) {
+        setError(errorText(e));
+      }
+    },
+    onBan: async (m) => {
+      if (!liveTalentRef.current || !m.senderIdentity) return;
+      if (!confirm(`Blokir ${m.name}? Dia dikeluarkan dan tidak bisa menonton siaran ${selectedTalent?.name ?? 'ini'} lagi.`)) return;
+      try {
+        const res = await moderateLive(liveTalentRef.current, 'ban', m.senderIdentity, m.name);
+        // Hapus juga semua pesannya dari layar semua orang
+        deleteForAll(messages.filter((x) => x.senderIdentity === m.senderIdentity).map((x) => x.id));
+        setNotice(res?.note ?? `${m.name} diblokir. Buka blokir lewat menu "Profil Saya" → Penonton Diblokir.`);
+      } catch (e) {
+        setError(errorText(e));
+      }
+    }
   };
 
   return (
@@ -304,6 +361,9 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
             {error && (
               <p className="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/20 p-2.5 rounded-lg">{error}</p>
             )}
+            {notice && (
+              <p className="text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-lg">{notice}</p>
+            )}
 
             {isLive || phase === 'stopping' ? (
               <button
@@ -337,7 +397,13 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
           {/* Chat */}
           <div className="border-t lg:border-t-0 lg:border-l border-white/10 flex flex-col min-h-[280px] lg:min-h-0">
             <div className="px-3 py-2 border-b border-white/10 text-xs font-semibold text-slate-300">Chat Penonton</div>
-            <LiveChat messages={messages} canChat disabled={!isLive} onSend={sendChat} />
+            <LiveChat
+              messages={messages}
+              canChat
+              disabled={!isLive}
+              onSend={sendChat}
+              moderation={isLive ? moderation : undefined}
+            />
           </div>
         </div>
       </div>

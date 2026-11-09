@@ -413,6 +413,135 @@ export async function sendLiveHeartbeat(talentId: string): Promise<void> {
   if (error) throw error;
 }
 
+// Moderasi: keluarkan penonton sekarang, atau blokir permanen dari siaran talent ini
+export const moderateLive = (talentId: string, action: 'kick' | 'ban', identity: string, name: string) =>
+  invokeFunction<{ ok: boolean; note?: string }>('live-moderate', { talentId, action, identity, name });
+
+export interface LiveBan {
+  userId: string;
+  userName: string;
+  createdAt: string;
+}
+
+export async function fetchLiveBans(talentId: string): Promise<LiveBan[]> {
+  const { data, error } = await supabase
+    .from('live_bans')
+    .select('user_id, user_name, created_at')
+    .eq('talent_id', talentId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data.map((b) => ({
+    userId: b.user_id,
+    userName: b.user_name || 'Member',
+    createdAt: dateFormat.format(new Date(b.created_at)),
+  }));
+}
+
+export async function unbanViewer(talentId: string, userId: string): Promise<void> {
+  const { error } = await supabase.from('live_bans').delete().eq('talent_id', talentId).eq('user_id', userId);
+  if (error) throw error;
+}
+
+// Jumlah penonton tertinggi hari ini (untuk statistik)
+export async function recordLiveViewers(talentId: string, viewers: number): Promise<void> {
+  await supabase.rpc('record_live_viewers', { p_talent_id: talentId, p_viewers: viewers });
+}
+
+// ---------------------------------------------------------------------
+// Jadwal live
+// ---------------------------------------------------------------------
+export interface LiveSchedule {
+  id: string;
+  talentId: string;
+  startsAt: string; // ISO
+  note: string;
+}
+
+const toSchedule = (r: { id: string; talent_id: string; starts_at: string; note: string }): LiveSchedule => ({
+  id: r.id,
+  talentId: r.talent_id,
+  startsAt: r.starts_at,
+  note: r.note,
+});
+
+// Jadwal yang akan datang (termasuk yang baru mulai < 2 jam lalu)
+export async function fetchUpcomingSchedules(talentId?: string): Promise<LiveSchedule[]> {
+  let q = supabase
+    .from('live_schedules')
+    .select('id, talent_id, starts_at, note')
+    .gte('starts_at', new Date(Date.now() - 2 * 3600_000).toISOString())
+    .order('starts_at', { ascending: true })
+    .limit(100);
+  if (talentId) q = q.eq('talent_id', talentId);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data.map(toSchedule);
+}
+
+export async function addSchedule(talentId: string, startsAt: Date, note: string): Promise<LiveSchedule> {
+  const { data, error } = await supabase
+    .from('live_schedules')
+    .insert({ talent_id: talentId, starts_at: startsAt.toISOString(), note: note.trim().slice(0, 120) })
+    .select('id, talent_id, starts_at, note')
+    .single();
+  if (error) {
+    if (error.code === '42501') throw new Error('Waktu jadwal harus di masa depan (maksimal 60 hari ke depan).');
+    throw error;
+  }
+  return toSchedule(data);
+}
+
+export async function deleteSchedule(id: string): Promise<void> {
+  const { error } = await supabase.from('live_schedules').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------
+// Statistik
+// ---------------------------------------------------------------------
+// Dicatat sekali per talent per sesi browser, supaya refresh tidak menggandakan angka
+export function recordTalentView(talentId: string): void {
+  const key = `paradox_viewed_${talentId}`;
+  try {
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, '1');
+  } catch {
+    /* penyimpanan diblokir: tetap catat */
+  }
+  supabase.rpc('record_talent_view', { p_talent_id: talentId }).then(() => {});
+}
+
+export interface AdminStats {
+  from: string;
+  to: string;
+  totals: {
+    profile_views: number;
+    live_sessions: number;
+    peak_live_viewers: number;
+    new_likes: number;
+    new_reviews: number;
+    new_members: number;
+  };
+  daily: { day: string; views: number }[];
+  talents: {
+    id: string;
+    name: string;
+    likes: number;
+    rating: number;
+    reviews: number;
+    visible: boolean;
+    views: number;
+    live_sessions: number;
+    peak_viewers: number;
+  }[];
+}
+
+export async function fetchAdminStats(days: number): Promise<AdminStats> {
+  const { data, error } = await supabase.rpc('admin_stats', { p_days: days });
+  if (error) throw error;
+  return data as AdminStats;
+}
+
 // ---------------------------------------------------------------------
 // Akun saya (member)
 // ---------------------------------------------------------------------

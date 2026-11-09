@@ -10,7 +10,8 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "db:setup": "node --env-file=.env scripts/setup-db.mjs",
-    "functions:deploy": "node --env-file=.env scripts/deploy-functions.mjs"
+    "functions:deploy": "node --env-file=.env scripts/deploy-functions.mjs",
+    "telegram:chat-id": "node --env-file=.env scripts/telegram-chat-id.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.4",

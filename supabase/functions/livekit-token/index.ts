@@ -61,6 +61,17 @@ Deno.serve(async (req) => {
       return json({ error: 'Siaran ini tidak tersedia.' }, 403);
     }
 
+    // Penonton yang diblokir host tidak bisa masuk lagi ke siaran talent ini
+    if (!wantsHost && user && !isAdmin && !isOwner) {
+      const { data: ban } = await admin
+        .from('live_bans')
+        .select('user_id')
+        .eq('talent_id', talentId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (ban) return json({ error: 'Anda diblokir dari siaran talent ini.' }, 403);
+    }
+
     const identity = user ? `${wantsHost ? 'host' : 'user'}-${user.id}` : `tamu-${crypto.randomUUID()}`;
     const displayName = wantsHost ? talent.name : profile?.name || (user ? 'Member' : 'Tamu');
 
@@ -68,7 +79,8 @@ Deno.serve(async (req) => {
       identity,
       name: displayName,
       ttl: '4h',
-      metadata: JSON.stringify({ role: wantsHost ? 'host' : 'viewer' }),
+      // host = talent yang siaran; moderator = admin yang menonton (boleh hapus pesan / keluarkan penonton)
+      metadata: JSON.stringify({ role: wantsHost ? 'host' : isAdmin || isOwner ? 'moderator' : 'viewer' }),
     });
     at.addGrant({
       room: `talent-${talentId}`,

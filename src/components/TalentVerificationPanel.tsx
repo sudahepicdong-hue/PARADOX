@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { ArrowLeft, ShieldCheck, ShieldAlert, FileText, Eye, Trash2, Upload, KeyRound, EyeOff } from 'lucide-react';
 import { Talent, TalentDocument } from '../types/talent';
 import * as db from '../lib/db';
+import { LiveScheduleManager } from './LiveScheduleManager';
+import { LiveBansList } from './LiveBansList';
 
 interface TalentVerificationPanelProps {
   talent: Talent;
@@ -341,6 +343,9 @@ export const TalentVerificationPanel: React.FC<TalentVerificationPanelProps> = (
           </button>
         )}
       </div>
+
+      <LiveScheduleManager talentId={talent.id} />
+      <LiveBansList talentId={talent.id} />
     </div>
   );
 };

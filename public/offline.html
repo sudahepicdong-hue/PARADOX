@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PARADOX - Offline</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #07080d;
+        color: #e2e8f0;
+        font-family: system-ui, -apple-system, sans-serif;
+        text-align: center;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+      img { width: 88px; height: 88px; border-radius: 50%; border: 2px solid rgba(239, 68, 68, 0.6); }
+      h1 { font-size: 20px; margin: 20px 0 8px; }
+      p { color: #94a3b8; font-size: 14px; margin: 0 0 20px; }
+      button {
+        background: #dc2626; color: #fff; border: 0; border-radius: 12px;
+        padding: 12px 22px; font-size: 14px; font-weight: 700; cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div>
+      <img src="/icons/icon-192.png" alt="PARADOX" />
+      <h1>Tidak ada koneksi internet</h1>
+      <p>Periksa koneksi Anda, lalu coba lagi.</p>
+      <button onclick="location.reload()">Coba Lagi</button>
+    </div>
+  </body>
+</html>

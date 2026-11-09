@@ -3,6 +3,7 @@ import { Talent, MediaItem, SiteSettings, Review } from '../types/talent';
 import { TalentVerificationPanel } from './TalentVerificationPanel';
 import { ReportsPanel } from './ReportsPanel';
 import { AuditLogPanel } from './AuditLogPanel';
+import { AdminStatsPanel } from './AdminStatsPanel';
 import {
   X,
   Plus,
@@ -21,7 +22,8 @@ import {
   Upload,
   ShieldCheck,
   Flag,
-  History
+  History,
+  BarChart3
 } from 'lucide-react';
 import { uploadMedia, fetchReports, setTalentPassword as setTalentLoginPassword } from '../lib/db';
 
@@ -55,7 +57,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   onTalentChanged
 }) => {
   // Tabs: 'talents' or 'settings' or 'backup' or 'reports'
-  const [activeTab, setActiveTab] = useState<'talents' | 'settings' | 'backup' | 'reports' | 'history'>('talents');
+  const [activeTab, setActiveTab] = useState<'talents' | 'settings' | 'backup' | 'reports' | 'history' | 'stats'>('talents');
   const [verifyingTalentId, setVerifyingTalentId] = useState<string | null>(null);
   const [openReportCount, setOpenReportCount] = useState<number | null>(null);
   const verifyingTalent = talents.find((t) => t.id === verifyingTalentId) || null;
@@ -368,6 +370,18 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
           </button>
 
           <button
+            onClick={() => { setActiveTab('stats'); setIsAddingNew(false); setEditingTalent(null); setVerifyingTalentId(null); }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'stats'
+                ? 'bg-red-600 text-white shadow-md shadow-red-600/30'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <BarChart3 className="w-3.5 h-3.5" />
+            <span>Statistik</span>
+          </button>
+
+          <button
             onClick={() => { setActiveTab('history'); setIsAddingNew(false); setEditingTalent(null); setVerifyingTalentId(null); }}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'history'
@@ -598,6 +612,12 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
         )}
 
         {/* Tab 2: Talent Catalog Management */}
+        {activeTab === 'stats' && (
+          <div className="flex-1 overflow-y-auto pr-1">
+            <AdminStatsPanel />
+          </div>
+        )}
+
         {activeTab === 'history' && (
           <div className="flex-1 overflow-y-auto pr-1">
             <AuditLogPanel />

@@ -21,6 +21,8 @@ import { ResetPasswordModal } from './components/ResetPasswordModal';
 import { TalentProfileModal } from './components/TalentProfileModal';
 import { AccountModal } from './components/AccountModal';
 import { AgeGate, hasConfirmedAge } from './components/AgeGate';
+import { UpcomingLives } from './components/UpcomingLives';
+import { InstallPrompt } from './components/InstallPrompt';
 import { Radio, Sparkles } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { loadAccount, signOut } from './lib/auth';
@@ -33,6 +35,9 @@ export default function App() {
   const [siteSettings, setSiteSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS);
   const [talents, setTalents] = useState<Talent[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [schedules, setSchedules] = useState<db.LiveSchedule[]>([]);
+  const reloadSchedules = () =>
+    db.fetchUpcomingSchedules().then(setSchedules).catch((e) => console.warn('Gagal memuat jadwal live', e));
   const [isDataLoading, setIsDataLoading] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
 
@@ -86,6 +91,7 @@ export default function App() {
       setTalents(t);
       setReviews(r);
       setSiteSettings(s);
+      reloadSchedules();
     } catch (e) {
       console.error('Gagal memuat data', e);
       setDataError(errorText(e));
@@ -157,7 +163,10 @@ export default function App() {
 
     // Saat tab dibuka lagi, sinkronkan ulang (misalnya ada talent yang disembunyikan selama tab tidak aktif)
     const onVisible = () => {
-      if (document.visibilityState === 'visible') reloadTalents();
+      if (document.visibilityState === 'visible') {
+        reloadTalents();
+        reloadSchedules();
+      }
     };
     document.addEventListener('visibilitychange', onVisible);
 
@@ -220,6 +229,11 @@ export default function App() {
     if (data.user) setCurrentUser(await loadAccount(data.user));
     showToast('Profil talent Anda sudah dihapus.');
   };
+
+  // Statistik: catat kunjungan profil (sekali per talent per sesi browser)
+  useEffect(() => {
+    if (selectedDetailTalent) db.recordTalentView(selectedDetailTalent.id);
+  }, [selectedDetailTalent?.id]);
 
   // Keep selectedDetailTalent updated if talents change (e.g., likes or reviews)
   useEffect(() => {
@@ -439,6 +453,12 @@ export default function App() {
         )}
 
         {/* Talent Catalog with Filter & Search */}
+        <UpcomingLives
+          talents={publicTalents}
+          schedules={schedules}
+          onOpenDetail={(talent) => setSelectedDetailTalent(talent)}
+        />
+
         <CatalogSection
           talents={publicTalents}
           onOpenDetail={(talent) => setSelectedDetailTalent(talent)}
@@ -472,6 +492,7 @@ export default function App() {
           brandName={siteSettings.brandName}
           onReport={setReportTarget}
           onDeleteReview={handleDeleteReview}
+          schedules={schedules.filter((s) => s.talentId === selectedDetailTalent.id)}
         />
       )}
 
@@ -491,6 +512,7 @@ export default function App() {
           canChat={Boolean(currentUser)}
           myName={currentUser?.name}
           onRequestLogin={() => setIsAuthOpen(true)}
+          isModerator={currentUser?.role === 'admin' || currentUser?.talentId === selectedLiveTalent.id}
         />
         </React.Suspense>
       )}
@@ -543,7 +565,10 @@ export default function App() {
         <AdminPanelModal
           talents={talents}
           siteSettings={siteSettings}
-          onClose={() => setIsAdminOpen(false)}
+          onClose={() => {
+            setIsAdminOpen(false);
+            reloadSchedules();
+          }}
           onSaveTalent={handleSaveTalent}
           onDeleteTalent={handleDeleteTalent}
           onResetDefaultTalents={handleResetDefault}
@@ -563,7 +588,10 @@ export default function App() {
       {isProfileOpen && myTalent && (
         <TalentProfileModal
           talent={myTalent}
-          onClose={() => setIsProfileOpen(false)}
+          onClose={() => {
+            setIsProfileOpen(false);
+            reloadSchedules();
+          }}
           onSave={handleSaveOwnProfile}
           onDelete={handleDeleteOwnProfile}
         />
@@ -587,6 +615,9 @@ export default function App() {
 
       {/* Laporkan profil / ulasan */}
       {reportTarget && <ReportModal target={reportTarget} onClose={() => setReportTarget(null)} />}
+
+      {/* Ajakan install website sebagai aplikasi di HP */}
+      <InstallPrompt brandName={siteSettings.brandName} />
 
       {/* Buat kata sandi baru setelah membuka link reset dari email */}
       {isResetPasswordOpen && <ResetPasswordModal onDone={() => setIsResetPasswordOpen(false)} />}

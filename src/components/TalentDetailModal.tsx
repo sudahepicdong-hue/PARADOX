@@ -17,9 +17,12 @@ import {
   VolumeX,
   Radio,
   Flag,
-  Trash2
+  Trash2,
+  CalendarClock
 } from 'lucide-react';
 import type { ReportTarget } from './ReportModal';
+import type { LiveSchedule } from '../lib/db';
+import { scheduleFormat } from './LiveScheduleManager';
 
 interface TalentDetailModalProps {
   talent: Talent;
@@ -33,6 +36,7 @@ interface TalentDetailModalProps {
   brandName?: string;
   onReport: (target: ReportTarget) => void;
   onDeleteReview: (reviewId: string) => void;
+  schedules?: LiveSchedule[];
 }
 
 export const TalentDetailModal: React.FC<TalentDetailModalProps> = ({
@@ -46,7 +50,8 @@ export const TalentDetailModal: React.FC<TalentDetailModalProps> = ({
   onOpenLive,
   brandName = 'PARADOX',
   onReport,
-  onDeleteReview
+  onDeleteReview,
+  schedules = []
 }) => {
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
   const [copiedUsername, setCopiedUsername] = useState(false);
@@ -405,6 +410,23 @@ export const TalentDetailModal: React.FC<TalentDetailModalProps> = ({
                     ))}
                   </div>
                 </div>
+
+                {/* Jadwal live berikutnya */}
+                {schedules.length > 0 && (
+                  <div className="pt-2">
+                    <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <CalendarClock className="w-3.5 h-3.5" /> Jadwal Live
+                    </h4>
+                    <div className="space-y-1.5">
+                      {schedules.slice(0, 5).map((s) => (
+                        <div key={s.id} className="text-xs text-slate-200">
+                          <span className="font-semibold text-red-300">{scheduleFormat.format(new Date(s.startsAt))}</span>
+                          {s.note && <span className="text-slate-400"> · {s.note}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
