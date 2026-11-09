@@ -1,121 +1,102 @@
-import React, { useState } from 'react';
-import { UserAccount, Talent } from '../types/talent';
-import { X, User, Lock, Mail, Shield, Sparkles, Radio, Check } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { fetchTalentLoginOptions, talentLoginEmail } from '../lib/db';
+import { UserAccount } from '../types/talent';
+import { X, User, Lock, Mail, Shield, Sparkles, Radio } from 'lucide-react';
+import { signIn, signUp, requestPasswordReset } from '../lib/auth';
 
 interface AuthModalProps {
   onClose: () => void;
   onLoginSuccess: (user: UserAccount) => void;
-  talents: Talent[];
 }
 
-// Hash SHA-256 kredensial diambil dari Environment Variables (diatur di Sevalla / file .env lokal).
-// Kalau variabel belum diisi, login admin & talent otomatis ditolak.
-const ADMIN_USERNAME_HASH = (import.meta.env.VITE_ADMIN_USERNAME_HASH ?? '').trim().toLowerCase();
-const ADMIN_PASSWORD_HASH = (import.meta.env.VITE_ADMIN_PASSWORD_HASH ?? '').trim().toLowerCase();
-const TALENT_PASSWORD_HASH = (import.meta.env.VITE_TALENT_PASSWORD_HASH ?? '').trim().toLowerCase();
-
-const sha256 = async (text: string): Promise<string> => {
-  const data = new TextEncoder().encode(text);
-  const digest = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-};
-
-export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, talents }) => {
-  // Roles: 'user' | 'talent' | 'admin'
+// Semua login lewat Supabase Auth (email + kata sandi).
+// Role (user / talent / admin) diambil dari tabel public.profiles, bukan dari form.
+export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess }) => {
   const [activeRole, setActiveRole] = useState<'user' | 'talent' | 'admin'>('user');
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [name, setName] = useState('');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
-  const [selectedTalentId, setSelectedTalentId] = useState<string>(talents[0]?.id || '');
   const [errorMessage, setErrorMessage] = useState('');
+  const [infoMessage, setInfoMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isForgot, setIsForgot] = useState(false); // mode "Lupa kata sandi"
+
+  const isRegister = activeRole === 'user' && mode === 'register' && !isForgot;
+
+  // Daftar talent yang sudah dibuatkan login oleh admin
+  const [talentOptions, setTalentOptions] = useState<{ id: string; name: string }[] | null>(null);
+  const [selectedTalentId, setSelectedTalentId] = useState('');
+
+  useEffect(() => {
+    if (activeRole !== 'talent' || talentOptions) return;
+    fetchTalentLoginOptions()
+      .then((list) => {
+        setTalentOptions(list);
+        if (list[0]) setSelectedTalentId(list[0].id);
+      })
+      .catch(() => {
+        setTalentOptions([]);
+        setErrorMessage('Gagal memuat daftar talent. Coba lagi.');
+      });
+  }, [activeRole]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
+    setInfoMessage('');
 
-    if (activeRole === 'admin') {
-      // Admin authentication
-      const [userHash, passHash] = await Promise.all([
-        sha256(identifier.trim().toLowerCase()),
-        sha256(password),
-      ]);
-      if (userHash !== ADMIN_USERNAME_HASH || passHash !== ADMIN_PASSWORD_HASH) {
-        setErrorMessage('Username atau kata sandi admin salah.');
-        return;
-      }
-      const adminUser: UserAccount = {
-        id: 'admin-official',
-        name: 'Official Admin PARADOX',
-        emailOrPhone: 'paradox',
-        role: 'admin',
-        likedTalentIds: []
-      };
-      onLoginSuccess(adminUser);
-      onClose();
+    if (activeRole === 'talent' && !selectedTalentId) {
+      setErrorMessage('Pilih nama talent Anda dulu.');
       return;
     }
-
-    if (activeRole === 'talent') {
-      // Talent authentication
-      if ((await sha256(password)) !== TALENT_PASSWORD_HASH) {
-        setErrorMessage('Kata sandi talent salah.');
+    const email = activeRole === 'talent' ? talentLoginEmail(selectedTalentId) : identifier.trim().toLowerCase();
+    setIsLoading(true);
+    try {
+      if (isForgot) {
+        await requestPasswordReset(email);
+        setInfoMessage('Jika email terdaftar, link reset kata sandi sudah dikirim. Cek inbox / folder spam Anda.');
         return;
       }
-      const talentObj = talents.find((t) => t.id === selectedTalentId) || talents[0];
-      const talentUser: UserAccount = {
-        id: `talent-user-${talentObj.id}`,
-        name: talentObj.name,
-        emailOrPhone: `@${talentObj.telegramUsername}`,
-        role: 'talent',
-        talentId: talentObj.id,
-        likedTalentIds: []
-      };
-      onLoginSuccess(talentUser);
-      onClose();
-      return;
-    }
 
-    // Standard User / Visitor
-    if (mode === 'register') {
-      if (!name.trim()) {
-        setErrorMessage('Silakan masukkan nama lengkap atau alias Anda.');
+      if (activeRole === 'user' && mode === 'register') {
+        if (!name.trim()) {
+          setErrorMessage('Silakan masukkan nama lengkap atau alias Anda.');
+          return;
+        }
+        const { account, needsConfirmation } = await signUp(name.trim(), email, password);
+        if (needsConfirmation || !account) {
+          setInfoMessage('Pendaftaran berhasil! Cek email Anda dan klik link konfirmasi, lalu masuk.');
+          setMode('login');
+          setPassword('');
+          return;
+        }
+        onLoginSuccess(account);
+        onClose();
         return;
       }
-      const newUser: UserAccount = {
-        id: `user-${Date.now()}`,
-        name: name.trim(),
-        emailOrPhone: identifier.trim(),
-        role: 'user',
-        likedTalentIds: []
-      };
-      onLoginSuccess(newUser);
+
+      const account = await signIn(email, password, activeRole);
+      onLoginSuccess(account);
       onClose();
-    } else {
-      const standardUser: UserAccount = {
-        id: `user-${Date.now()}`,
-        name: name.trim() || identifier.split('@')[0] || 'VIP Member',
-        emailOrPhone: identifier.trim(),
-        role: 'user',
-        likedTalentIds: []
-      };
-      onLoginSuccess(standardUser);
-      onClose();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Terjadi kesalahan. Coba lagi.';
+      setErrorMessage(activeRole === 'talent' && msg === 'Email atau kata sandi salah.' ? 'Password salah.' : msg);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // Demo instan hanya untuk Member VIP. Admin & Talent wajib login dengan kata sandi.
-  const handleQuickDemoLogin = () => {
-    onLoginSuccess({
-      id: 'user-demo-1',
-      name: 'Reza Hendra (VIP Client)',
-      emailOrPhone: 'reza@vipclub.id',
-      role: 'user',
-      likedTalentIds: ['talent-2']
-    });
-    onClose();
+  const switchRole = (role: 'user' | 'talent' | 'admin') => {
+    setActiveRole(role);
+    setErrorMessage('');
+    setInfoMessage('');
+  };
+
+  const toggleForgot = (value: boolean) => {
+    setIsForgot(value);
+    setErrorMessage('');
+    setInfoMessage('');
   };
 
   return (
@@ -144,7 +125,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t
             )}
           </div>
           <h3 className="font-display text-2xl font-bold text-white">
-            {activeRole === 'talent'
+            {isForgot
+              ? 'Lupa Kata Sandi'
+              : activeRole === 'talent'
               ? 'Login Khusus Talent Host'
               : activeRole === 'admin'
               ? 'Admin Studio Login'
@@ -153,8 +136,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t
               : 'Daftar Akun Baru'}
           </h3>
           <p className="text-xs text-slate-400">
-            {activeRole === 'talent'
-              ? 'Akses eksklusif untuk siaran live streaming kamera dan chat penonton. Tidak dapat mengubah data website.'
+            {isForgot
+              ? 'Masukkan email akun Anda. Kami akan mengirim link untuk membuat kata sandi baru.'
+              : activeRole === 'talent'
+              ? 'Akses studio live streaming dan kelola profil Anda sendiri.'
               : activeRole === 'admin'
               ? 'Kelola katalog talent, edit media, dan atur seluruh pengaturan website'
               : 'Simpan talent favorit, beri ulasan dan rating, serta akses VIP exclusive'}
@@ -162,10 +147,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t
         </div>
 
         {/* 3-Role Switcher Tabs */}
+        {!isForgot && (
         <div className="grid grid-cols-3 p-1 bg-black/60 rounded-xl border border-white/10 text-xs">
           <button
             type="button"
-            onClick={() => { setActiveRole('user'); setErrorMessage(''); }}
+            onClick={() => switchRole('user')}
             className={`py-2 rounded-lg font-semibold transition-all cursor-pointer ${
               activeRole === 'user' ? 'bg-red-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
             }`}
@@ -174,7 +160,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t
           </button>
           <button
             type="button"
-            onClick={() => { setActiveRole('talent'); setErrorMessage(''); }}
+            onClick={() => switchRole('talent')}
             className={`py-2 rounded-lg font-semibold transition-all cursor-pointer flex items-center justify-center gap-1 ${
               activeRole === 'talent' ? 'bg-red-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
             }`}
@@ -184,7 +170,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t
           </button>
           <button
             type="button"
-            onClick={() => { setActiveRole('admin'); setErrorMessage(''); }}
+            onClick={() => switchRole('admin')}
             className={`py-2 rounded-lg font-semibold transition-all cursor-pointer flex items-center justify-center gap-1 ${
               activeRole === 'admin' ? 'bg-red-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
             }`}
@@ -193,13 +179,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t
             <span>Admin</span>
           </button>
         </div>
+        )}
 
         {/* User Login/Register Toggle (only when in user mode) */}
-        {activeRole === 'user' && (
+        {activeRole === 'user' && !isForgot && (
           <div className="grid grid-cols-2 p-1 bg-black/40 rounded-lg border border-white/5 text-xs">
             <button
               type="button"
-              onClick={() => { setMode('login'); setErrorMessage(''); }}
+              onClick={() => { setMode('login'); setErrorMessage(''); setInfoMessage(''); }}
               className={`py-1.5 rounded font-medium transition-all cursor-pointer ${
                 mode === 'login' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'
               }`}
@@ -208,7 +195,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t
             </button>
             <button
               type="button"
-              onClick={() => { setMode('register'); setErrorMessage(''); }}
+              onClick={() => { setMode('register'); setErrorMessage(''); setInfoMessage(''); }}
               className={`py-1.5 rounded font-medium transition-all cursor-pointer ${
                 mode === 'register' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'
               }`}
@@ -220,27 +207,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* If Talent Role: Select Talent Profile */}
-          {activeRole === 'talent' && (
-            <div>
-              <label className="text-xs text-slate-300 block mb-1 font-semibold">
-                Pilih Akun Profil Talent Anda:
-              </label>
-              <select
-                value={selectedTalentId}
-                onChange={(e) => setSelectedTalentId(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl bg-black/70 border border-red-500/40 text-xs text-white focus:outline-none focus:border-red-500 cursor-pointer font-medium"
-              >
-                {talents.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} (@{t.telegramUsername})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {activeRole === 'user' && mode === 'register' && (
+          {isRegister && (
             <div>
               <label className="text-xs text-slate-300 block mb-1 font-medium">Nama Lengkap / Alias</label>
               <div className="relative">
@@ -257,18 +224,45 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t
             </div>
           )}
 
-          {activeRole !== 'talent' && (
+          {activeRole === 'talent' && !isForgot ? (
+            <div>
+              <label className="text-xs text-slate-300 block mb-1 font-medium">Pilih Nama Talent Anda</label>
+              {talentOptions === null ? (
+                <p className="text-xs text-slate-400 py-2.5">Memuat daftar talent...</p>
+              ) : talentOptions.length === 0 ? (
+                <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-lg">
+                  Belum ada talent yang dibuatkan login. Minta admin membuatkan password untuk Anda.
+                </p>
+              ) : (
+                <div className="relative">
+                  <Radio className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-red-400 pointer-events-none" />
+                  <select
+                    value={selectedTalentId}
+                    onChange={(e) => setSelectedTalentId(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/70 border border-red-500/40 text-sm text-white focus:outline-none focus:border-red-500 cursor-pointer"
+                  >
+                    {talentOptions.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          ) : (
             <div>
               <label className="text-xs text-slate-300 block mb-1 font-medium">
-                {activeRole === 'admin' ? 'Username Admin' : 'Email atau Nomor WhatsApp'}
+                {activeRole === 'admin' ? 'Email Admin' : 'Email'}
               </label>
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                 <input
-                  type="text"
+                  type="email"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
-                  placeholder={activeRole === 'admin' ? 'Masukkan username admin' : 'nama@email.com / 0812xxxx'}
+                  placeholder="nama@email.com"
+                  autoComplete="email"
                   required
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/50 border border-white/10 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-red-500"
                 />
@@ -276,22 +270,41 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t
             </div>
           )}
 
-          <div>
-            <label className="text-xs text-slate-300 block mb-1 font-medium">
-              {activeRole === 'talent' ? 'PIN / Kata Sandi Talent' : 'Kata Sandi'}
-            </label>
-            <div className="relative">
-              <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/50 border border-white/10 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-red-500"
-              />
+          {!isForgot && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-slate-300 font-medium">
+                  {activeRole === 'talent' ? 'Password Talent' : 'Kata Sandi'}
+                </label>
+                {activeRole === 'talent' ? (
+                  <span className="text-[11px] text-slate-500">Lupa? Minta admin buatkan password baru.</span>
+                ) : (
+                  !isRegister && (
+                    <button
+                      type="button"
+                      onClick={() => toggleForgot(true)}
+                      className="text-[11px] text-red-400 hover:text-red-300 hover:underline cursor-pointer"
+                    >
+                      Lupa kata sandi?
+                    </button>
+                  )
+                )}
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  minLength={6}
+                  autoComplete={isRegister ? 'new-password' : 'current-password'}
+                  required
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/50 border border-white/10 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-red-500"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {errorMessage && (
             <p className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 p-2 rounded-lg">
@@ -299,11 +312,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t
             </p>
           )}
 
+          {infoMessage && (
+            <p className="text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 p-2 rounded-lg">
+              {infoMessage}
+            </p>
+          )}
+
           <button
             type="submit"
-            className="w-full py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:brightness-110 shadow-lg shadow-red-600/30 transition-all cursor-pointer"
+            disabled={isLoading}
+            className="w-full py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:brightness-110 shadow-lg shadow-red-600/30 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait"
           >
-            {activeRole === 'talent'
+            {isLoading
+              ? 'Memproses...'
+              : isForgot
+              ? 'Kirim Link Reset'
+              : activeRole === 'talent'
               ? 'Masuk ke Studio Live Talent'
               : activeRole === 'admin'
               ? 'Masuk ke Admin Studio'
@@ -311,22 +335,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t
               ? 'Masuk Sekarang'
               : 'Daftar Akun VIP'}
           </button>
-        </form>
 
-        {/* Quick Demo Login (Member VIP only) */}
-        {activeRole === 'user' && (
-          <div className="pt-2 border-t border-white/10 space-y-2">
-            <div className="text-[11px] text-slate-400 text-center font-medium">
-              Uji coba instan tanpa ketik password:
-            </div>
+          {isForgot && (
             <button
-              onClick={handleQuickDemoLogin}
-              className="w-full py-2 px-2 rounded-lg text-[11px] font-medium text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer text-center"
+              type="button"
+              onClick={() => toggleForgot(false)}
+              className="w-full text-xs text-slate-400 hover:text-white cursor-pointer"
             >
-              Demo Member VIP
+              ← Kembali ke halaman masuk
             </button>
-          </div>
-        )}
+          )}
+        </form>
       </div>
     </div>
   );

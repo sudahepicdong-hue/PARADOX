@@ -20,7 +20,7 @@ export const TalentCard: React.FC<TalentCardProps> = ({
   brandName = 'PARADOX'
 }) => {
   const primaryMedia = talent.media[0] || {
-    url: '/src/assets/images/talent_model_valerie_1794207018750.jpg',
+    url: '/images/talent_model_valerie_1794207018750.jpg',
     type: 'image'
   };
 

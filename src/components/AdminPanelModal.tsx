@@ -1,5 +1,9 @@
-import React, { useState } from 'react';
-import { Talent, MediaItem, SiteSettings } from '../types/talent';
+import React, { useEffect, useState } from 'react';
+import { Talent, MediaItem, SiteSettings, Review } from '../types/talent';
+import { TalentVerificationPanel } from './TalentVerificationPanel';
+import { ReportsPanel } from './ReportsPanel';
+import { AuditLogPanel } from './AuditLogPanel';
+import { AdminStatsPanel } from './AdminStatsPanel';
 import {
   X,
   Plus,
@@ -15,18 +19,28 @@ import {
   Image as ImageIcon,
   Check,
   Download,
-  Upload
+  Upload,
+  ShieldCheck,
+  Flag,
+  History,
+  BarChart3
 } from 'lucide-react';
+import { uploadMedia, fetchReports, setTalentPassword as setTalentLoginPassword } from '../lib/db';
+
+const errorText = (e: unknown) => (e instanceof Error ? e.message : String((e as any)?.message ?? e));
 
 interface AdminPanelModalProps {
   talents: Talent[];
   siteSettings: SiteSettings;
   onClose: () => void;
-  onSaveTalent: (talent: Talent) => void;
+  onSaveTalent: (talent: Talent) => Promise<void>;
   onDeleteTalent: (id: string) => void;
   onResetDefaultTalents: () => void;
-  onSaveSiteSettings: (settings: SiteSettings) => void;
+  onSaveSiteSettings: (settings: SiteSettings) => Promise<void>;
   onOpenBroadcastForTalent?: (talent: Talent) => void;
+  reviews: Review[];
+  onDeleteReview: (reviewId: string) => Promise<boolean>;
+  onTalentChanged: (talentId: string) => Promise<void>;
 }
 
 export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
@@ -37,10 +51,23 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   onDeleteTalent,
   onResetDefaultTalents,
   onSaveSiteSettings,
-  onOpenBroadcastForTalent
+  onOpenBroadcastForTalent,
+  reviews,
+  onDeleteReview,
+  onTalentChanged
 }) => {
-  // Tabs: 'talents' or 'settings' or 'backup'
-  const [activeTab, setActiveTab] = useState<'talents' | 'settings' | 'backup'>('settings');
+  // Tabs: 'talents' or 'settings' or 'backup' or 'reports'
+  const [activeTab, setActiveTab] = useState<'talents' | 'settings' | 'backup' | 'reports' | 'history' | 'stats'>('talents');
+  const [verifyingTalentId, setVerifyingTalentId] = useState<string | null>(null);
+  const [openReportCount, setOpenReportCount] = useState<number | null>(null);
+  const verifyingTalent = talents.find((t) => t.id === verifyingTalentId) || null;
+
+  // Hitung laporan yang belum ditangani untuk badge di tab "Laporan"
+  useEffect(() => {
+    fetchReports()
+      .then((list) => setOpenReportCount(list.filter((r) => r.status === 'open').length))
+      .catch(() => {});
+  }, []);
 
   // Site Settings Form state
   const [settingsForm, setSettingsForm] = useState<SiteSettings>({ ...siteSettings });
@@ -53,9 +80,42 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const [newMediaUrl, setNewMediaUrl] = useState('');
   const [newMediaType, setNewMediaType] = useState<'image' | 'video'>('image');
   const [mediaList, setMediaList] = useState<MediaItem[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [talentPassword, setTalentPassword] = useState(''); // password login talent (opsional)
+  const [isSaving, setIsSaving] = useState(false);
+  const [settingsError, setSettingsError] = useState('');
+
+  // Upload foto/video dari perangkat ke Supabase Storage, lalu masukkan ke slider media
+  const handleUploadFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    if (files.length === 0) return;
+
+    setIsUploading(true);
+    try {
+      const added: MediaItem[] = [];
+      for (const file of files) {
+        const isVideo = file.type.startsWith('video/');
+        const url = await uploadMedia(file, formData.id || 'umum');
+        const firstImage = [...mediaList, ...added].find((m) => m.type === 'image')?.url;
+        added.push({
+          id: `media-${Date.now()}-${added.length}`,
+          type: isVideo ? 'video' : 'image',
+          url,
+          thumbnail: isVideo ? firstImage : undefined,
+          title: isVideo ? 'Video Reel' : 'Foto'
+        });
+      }
+      setMediaList((prev) => [...prev, ...added]);
+    } catch (err) {
+      alert(`Upload gagal: ${errorText(err)}`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   // Settings Save Handler
-  const handleSaveSettings = (e: React.FormEvent) => {
+  const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     let sanitizedUsername = settingsForm.officialTelegramUsername.replace('@', '').trim();
     let sanitizedUrl = settingsForm.officialTelegramUrl.trim();
@@ -70,12 +130,21 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       officialTelegramUrl: sanitizedUrl
     };
 
-    onSaveSiteSettings(updated);
-    setSettingsSavedMessage(true);
-    setTimeout(() => setSettingsSavedMessage(false), 3000);
+    setSettingsError('');
+    setIsSaving(true);
+    try {
+      await onSaveSiteSettings(updated);
+      setSettingsSavedMessage(true);
+      setTimeout(() => setSettingsSavedMessage(false), 3000);
+    } catch (err) {
+      setSettingsError(`Gagal menyimpan pengaturan: ${errorText(err)}`);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const startCreate = () => {
+    setTalentPassword('');
     setIsAddingNew(true);
     setEditingTalent(null);
     setFormData({
@@ -107,13 +176,14 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       {
         id: `m-1`,
         type: 'image',
-        url: '/src/assets/images/talent_model_valerie_1794207018750.jpg',
+        url: '/images/talent_model_valerie_1794207018750.jpg',
         title: 'Foto Utama'
       }
     ]);
   };
 
   const startEdit = (talent: Talent) => {
+    setTalentPassword('');
     setEditingTalent(talent);
     setIsAddingNew(false);
     setFormData({ ...talent });
@@ -126,7 +196,9 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       id: `media-${Date.now()}`,
       type: newMediaType,
       url: newMediaUrl.trim(),
-      thumbnail: newMediaType === 'video' ? '/src/assets/images/talent_model_valerie_1794207018750.jpg' : undefined,
+      thumbnail: newMediaType === 'video'
+        ? mediaList.find((m) => m.type === 'image')?.url || '/images/talent_model_valerie_1794207018750.jpg'
+        : undefined,
       title: `${newMediaType === 'video' ? 'Video Reel' : 'Foto'} Baru`
     };
     setMediaList([...mediaList, item]);
@@ -137,7 +209,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     setMediaList(mediaList.filter((_, i) => i !== index));
   };
 
-  const handleTalentSubmit = (e: React.FormEvent) => {
+  const handleTalentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.telegramUsername) {
       alert('Nama dan Username Telegram wajib diisi!');
@@ -145,6 +217,9 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     }
 
     const completeTalent: Talent = {
+      // Pertahankan data lain (featured, status tampil, info live, dll.) yang tidak ada di form
+      ...(formData as Talent),
+      isActive: formData.isActive ?? true,
       id: formData.id || `talent-${Date.now()}`,
       name: formData.name || '',
       alias: formData.alias || formData.name || '',
@@ -166,7 +241,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
         {
           id: 'def-1',
           type: 'image',
-          url: '/src/assets/images/talent_model_valerie_1794207018750.jpg',
+          url: '/images/talent_model_valerie_1794207018750.jpg',
           title: 'Photo'
         }
       ],
@@ -176,9 +251,33 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       verified: true
     };
 
-    onSaveTalent(completeTalent);
+    if (talentPassword && talentPassword.length < 6) {
+      alert('Password login talent minimal 6 karakter (atau kosongkan).');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await onSaveTalent(completeTalent);
+    } catch (err) {
+      alert(`Gagal menyimpan talent: ${errorText(err)}`);
+      setIsSaving(false);
+      return;
+    }
+
+    if (talentPassword) {
+      try {
+        await setTalentLoginPassword(completeTalent.id, talentPassword);
+        alert(`Talent tersimpan. Login talent siap:\n\nNama: ${completeTalent.alias || completeTalent.name}\nPassword: ${talentPassword}\n\nBerikan ke talent-nya. Talent login di tab "Talent".`);
+      } catch (err) {
+        alert(`Talent tersimpan, tapi password login GAGAL dibuat: ${errorText(err)}`);
+      }
+    }
+
+    setTalentPassword('');
     setEditingTalent(null);
     setIsAddingNew(false);
+    setIsSaving(false);
   };
 
   // Export JSON backup
@@ -233,7 +332,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex items-center gap-2 border-b border-white/10 pb-2">
+        <div className="flex items-center gap-2 border-b border-white/10 pb-2 overflow-x-auto whitespace-nowrap">
           <button
             onClick={() => { setActiveTab('settings'); setIsAddingNew(false); setEditingTalent(null); }}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
@@ -259,6 +358,42 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
           </button>
 
           <button
+            onClick={() => { setActiveTab('reports'); setIsAddingNew(false); setEditingTalent(null); setVerifyingTalentId(null); }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'reports'
+                ? 'bg-red-600 text-white shadow-md shadow-red-600/30'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Flag className="w-3.5 h-3.5" />
+            <span>Laporan{openReportCount ? ` (${openReportCount})` : ''}</span>
+          </button>
+
+          <button
+            onClick={() => { setActiveTab('stats'); setIsAddingNew(false); setEditingTalent(null); setVerifyingTalentId(null); }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'stats'
+                ? 'bg-red-600 text-white shadow-md shadow-red-600/30'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <BarChart3 className="w-3.5 h-3.5" />
+            <span>Statistik</span>
+          </button>
+
+          <button
+            onClick={() => { setActiveTab('history'); setIsAddingNew(false); setEditingTalent(null); setVerifyingTalentId(null); }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'history'
+                ? 'bg-red-600 text-white shadow-md shadow-red-600/30'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <History className="w-3.5 h-3.5" />
+            <span>Riwayat</span>
+          </button>
+
+          <button
             onClick={() => { setActiveTab('backup'); setIsAddingNew(false); setEditingTalent(null); }}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'backup'
@@ -278,6 +413,11 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
               <div className="p-3.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex items-center gap-2 animate-fade-in">
                 <Check className="w-4 h-4 text-emerald-400" />
                 <span>Pengaturan berhasil disimpan dan langsung diterapkan ke seluruh website!</span>
+              </div>
+            )}
+            {settingsError && (
+              <div className="p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs font-semibold">
+                {settingsError}
               </div>
             )}
 
@@ -461,19 +601,54 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
               </span>
               <button
                 type="submit"
-                className="px-6 py-2.5 rounded-xl font-bold text-xs text-white bg-gradient-to-r from-red-600 to-rose-700 hover:brightness-110 shadow-lg shadow-red-600/30 flex items-center gap-2 cursor-pointer"
+                disabled={isSaving}
+                className="px-6 py-2.5 rounded-xl font-bold text-xs text-white bg-gradient-to-r from-red-600 to-rose-700 hover:brightness-110 shadow-lg shadow-red-600/30 flex items-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-wait"
               >
                 <Save className="w-4 h-4" />
-                <span>Simpan Pengaturan Website</span>
+                <span>{isSaving ? 'Menyimpan...' : 'Simpan Pengaturan Website'}</span>
               </button>
             </div>
           </form>
         )}
 
         {/* Tab 2: Talent Catalog Management */}
+        {activeTab === 'stats' && (
+          <div className="flex-1 overflow-y-auto pr-1">
+            <AdminStatsPanel />
+          </div>
+        )}
+
+        {activeTab === 'history' && (
+          <div className="flex-1 overflow-y-auto pr-1">
+            <AuditLogPanel />
+          </div>
+        )}
+
+        {activeTab === 'reports' && (
+          <div className="flex-1 overflow-y-auto pr-1">
+            <ReportsPanel
+              talents={talents}
+              reviews={reviews}
+              onDeleteReview={onDeleteReview}
+              onTalentChanged={onTalentChanged}
+              onOpenCountChange={setOpenReportCount}
+              onOpenVerification={(id) => {
+                setVerifyingTalentId(id);
+                setActiveTab('talents');
+              }}
+            />
+          </div>
+        )}
+
         {activeTab === 'talents' && (
           <div className="flex-1 overflow-y-auto space-y-6 pr-1">
-            {isAddingNew || editingTalent ? (
+            {verifyingTalent ? (
+              <TalentVerificationPanel
+                talent={verifyingTalent}
+                onBack={() => setVerifyingTalentId(null)}
+                onChanged={onTalentChanged}
+              />
+            ) : isAddingNew || editingTalent ? (
               /* Add/Edit Form */
               <form onSubmit={handleTalentSubmit} className="space-y-6 bg-black/40 p-6 rounded-2xl border border-white/10">
                 <div className="flex items-center justify-between">
@@ -557,6 +732,24 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   </button>
                 </div>
 
+                {/* Password login talent */}
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/10 space-y-1.5">
+                  <label className="text-xs text-slate-300 block font-semibold">
+                    Password Login Talent {isAddingNew ? '(opsional)' : '(kosongkan jika tidak diganti)'}
+                  </label>
+                  <input
+                    type="text"
+                    value={talentPassword}
+                    onChange={(e) => setTalentPassword(e.target.value)}
+                    placeholder="min. 6 karakter"
+                    autoComplete="off"
+                    className="w-full px-3 py-2 rounded-lg bg-black/60 border border-white/10 text-xs text-white font-mono focus:outline-none focus:border-red-500"
+                  />
+                  <p className="text-[11px] text-slate-400">
+                    Talent login di tab "Talent" dengan memilih namanya dan memasukkan password ini.
+                  </p>
+                </div>
+
                 {/* Bio */}
                 <div>
                   <label className="text-xs text-slate-300 block mb-1 font-semibold">Deskripsi / Bio Profil</label>
@@ -589,7 +782,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                       type="text"
                       value={newMediaUrl}
                       onChange={(e) => setNewMediaUrl(e.target.value)}
-                      placeholder="URL Foto / Video (/src/assets/images/... atau https://...)"
+                      placeholder="URL Foto / Video (https://...)"
                       className="flex-1 px-3 py-2 rounded-lg bg-black/60 border border-white/10 text-xs text-white"
                     />
 
@@ -598,9 +791,26 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                       onClick={handleAddMedia}
                       className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium text-white transition-colors cursor-pointer"
                     >
-                      Tambah Media
+                      Tambah dari URL
                     </button>
                   </div>
+
+                  <label
+                    className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border border-dashed border-red-500/40 bg-red-500/5 hover:bg-red-500/10 text-xs font-semibold text-red-300 transition-colors ${
+                      isUploading ? 'opacity-60 cursor-wait' : 'cursor-pointer'
+                    }`}
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>{isUploading ? 'Mengupload...' : 'Upload Foto / Video dari Perangkat (maks 50 MB per file)'}</span>
+                    <input
+                      type="file"
+                      accept="image/*,video/*"
+                      multiple
+                      disabled={isUploading}
+                      onChange={handleUploadFiles}
+                      className="hidden"
+                    />
+                  </label>
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {mediaList.map((m, idx) => (
@@ -637,10 +847,11 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   </button>
                   <button
                     type="submit"
-                    className="px-6 py-2.5 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-red-600 to-rose-700 hover:brightness-110 shadow-md shadow-red-600/30 flex items-center gap-1.5 cursor-pointer"
+                    disabled={isSaving || isUploading}
+                    className="px-6 py-2.5 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-red-600 to-rose-700 hover:brightness-110 shadow-md shadow-red-600/30 flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-wait"
                   >
                     <Save className="w-4 h-4" />
-                    <span>Simpan Perubahan Talent</span>
+                    <span>{isSaving ? 'Menyimpan...' : 'Simpan Perubahan Talent'}</span>
                   </button>
                 </div>
               </form>
@@ -670,7 +881,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                       <div className="flex items-center gap-3">
                         <div className="w-14 h-18 rounded-lg overflow-hidden shrink-0 bg-slate-900 border border-white/10">
                           <img
-                            src={t.media[0]?.url || '/src/assets/images/talent_model_valerie_1794207018750.jpg'}
+                            src={t.media[0]?.url || '/images/talent_model_valerie_1794207018750.jpg'}
                             alt={t.name}
                             className="w-full h-full object-cover"
                             referrerPolicy="no-referrer"
@@ -682,6 +893,18 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                             {t.isLive && (
                               <span className="text-[10px] text-rose-400 bg-rose-500/20 px-1.5 py-0.2 rounded font-semibold animate-pulse">
                                 LIVE
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {!t.idVerifiedAt && (
+                              <span className="text-[10px] text-amber-300 bg-amber-500/15 px-1.5 py-0.5 rounded font-semibold">
+                                Belum diverifikasi
+                              </span>
+                            )}
+                            {t.isActive === false && (
+                              <span className="text-[10px] text-slate-300 bg-white/10 px-1.5 py-0.5 rounded font-semibold">
+                                Disembunyikan
                               </span>
                             )}
                           </div>
@@ -704,6 +927,17 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                             <Radio className="w-4 h-4 text-red-500 animate-pulse" />
                           </button>
                         )}
+                        <button
+                          onClick={() => setVerifyingTalentId(t.id)}
+                          className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                            t.idVerifiedAt
+                              ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400'
+                              : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300'
+                          }`}
+                          title="Verifikasi identitas, dokumen & login talent"
+                        >
+                          <ShieldCheck className="w-4 h-4" />
+                        </button>
                         <button
                           onClick={() => startEdit(t)}
                           className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-red-300 transition-colors cursor-pointer"
@@ -733,7 +967,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
             <div className="p-6 rounded-2xl bg-black/40 border border-white/10 space-y-4">
               <h4 className="font-bold text-sm text-white">Ekspor & Reset Data</h4>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Anda dapat mengunduh seluruh data talent dan konfigurasi website ke file JSON sebagai cadangan, atau mengembalikan data ke bawaan awal PARADOX.
+                Anda dapat mengunduh seluruh data talent dan konfigurasi website ke file JSON sebagai cadangan, atau mengembalikan pengaturan website ke bawaan awal PARADOX (data talent tidak ikut terhapus).
               </p>
 
               <div className="flex flex-wrap gap-4 pt-2">
@@ -752,7 +986,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   className="px-4 py-2.5 rounded-xl text-xs font-semibold text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 flex items-center gap-2 cursor-pointer"
                 >
                   <RotateCcw className="w-4 h-4" />
-                  <span>Reset Semua Data ke Default PARADOX</span>
+                  <span>Reset Pengaturan Website ke Default</span>
                 </button>
               </div>
             </div>

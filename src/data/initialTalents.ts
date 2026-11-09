@@ -42,20 +42,20 @@ export const INITIAL_TALENTS: Talent[] = [
       {
         id: 'val-1',
         type: 'image',
-        url: '/src/assets/images/talent_model_valerie_1794207018750.jpg',
+        url: '/images/talent_model_valerie_1794207018750.jpg',
         title: 'Emerald Gown Portrait'
       },
       {
         id: 'val-vid-1',
         type: 'video',
         url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-        thumbnail: '/src/assets/images/talent_model_valerie_1794207018750.jpg',
+        thumbnail: '/images/talent_model_valerie_1794207018750.jpg',
         title: 'VIP Lounge Video Greeting'
       },
       {
         id: 'val-2',
         type: 'image',
-        url: '/src/assets/images/talent_model_amanda_1794207019628.jpg',
+        url: '/images/talent_model_amanda_1794207019628.jpg',
         title: 'Glamour Cocktail Look'
       }
     ],
@@ -91,20 +91,20 @@ export const INITIAL_TALENTS: Talent[] = [
       {
         id: 'manda-1',
         type: 'image',
-        url: '/src/assets/images/talent_model_amanda_1794207019628.jpg',
+        url: '/images/talent_model_amanda_1794207019628.jpg',
         title: 'Velvet Green Club Look'
       },
       {
         id: 'manda-vid-1',
         type: 'video',
         url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
-        thumbnail: '/src/assets/images/talent_model_amanda_1794207019628.jpg',
+        thumbnail: '/images/talent_model_amanda_1794207019628.jpg',
         title: 'Video Teaser Bali Trip'
       },
       {
         id: 'manda-2',
         type: 'image',
-        url: '/src/assets/images/talent_model_giselle_1794207019101.jpg',
+        url: '/images/talent_model_giselle_1794207019101.jpg',
         title: 'Night Glow Outfit'
       }
     ],
@@ -140,20 +140,20 @@ export const INITIAL_TALENTS: Talent[] = [
       {
         id: 'gis-1',
         type: 'image',
-        url: '/src/assets/images/talent_model_giselle_1794207019101.jpg',
+        url: '/images/talent_model_giselle_1794207019101.jpg',
         title: 'Black Sequin Glamour'
       },
       {
         id: 'gis-vid-1',
         type: 'video',
         url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-        thumbnail: '/src/assets/images/talent_model_giselle_1794207019101.jpg',
+        thumbnail: '/images/talent_model_giselle_1794207019101.jpg',
         title: 'Behind The Scenes Clip'
       },
       {
         id: 'gis-2',
         type: 'image',
-        url: '/src/assets/images/talent_model_valerie_1794207018750.jpg',
+        url: '/images/talent_model_valerie_1794207018750.jpg',
         title: 'Gala Night Dress'
       }
     ],
@@ -189,20 +189,20 @@ export const INITIAL_TALENTS: Talent[] = [
       {
         id: 'nat-1',
         type: 'image',
-        url: '/src/assets/images/talent_model_amanda_1794207019628.jpg',
+        url: '/images/talent_model_amanda_1794207019628.jpg',
         title: 'Sweet Velvet Glam'
       },
       {
         id: 'nat-vid-1',
         type: 'video',
         url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-        thumbnail: '/src/assets/images/talent_model_amanda_1794207019628.jpg',
+        thumbnail: '/images/talent_model_amanda_1794207019628.jpg',
         title: 'Bandung Chill Greeting'
       },
       {
         id: 'nat-2',
         type: 'image',
-        url: '/src/assets/images/talent_model_giselle_1794207019101.jpg',
+        url: '/images/talent_model_giselle_1794207019101.jpg',
         title: 'Casual Chic Night'
       }
     ],
@@ -238,13 +238,13 @@ export const INITIAL_TALENTS: Talent[] = [
       {
         id: 'che-1',
         type: 'image',
-        url: '/src/assets/images/talent_model_valerie_1794207018750.jpg',
+        url: '/images/talent_model_valerie_1794207018750.jpg',
         title: 'VIP Lounge Exclusive'
       },
       {
         id: 'che-2',
         type: 'image',
-        url: '/src/assets/images/talent_model_amanda_1794207019628.jpg',
+        url: '/images/talent_model_amanda_1794207019628.jpg',
         title: 'Golden Glow Evening'
       }
     ],
@@ -280,20 +280,20 @@ export const INITIAL_TALENTS: Talent[] = [
       {
         id: 'ste-1',
         type: 'image',
-        url: '/src/assets/images/talent_model_giselle_1794207019101.jpg',
+        url: '/images/talent_model_giselle_1794207019101.jpg',
         title: 'Shimmering Night Look'
       },
       {
         id: 'ste-vid-1',
         type: 'video',
         url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
-        thumbnail: '/src/assets/images/talent_model_giselle_1794207019101.jpg',
+        thumbnail: '/images/talent_model_giselle_1794207019101.jpg',
         title: 'Canggu Sunset Party Clip'
       },
       {
         id: 'ste-2',
         type: 'image',
-        url: '/src/assets/images/talent_model_valerie_1794207018750.jpg',
+        url: '/images/talent_model_valerie_1794207018750.jpg',
         title: 'Cocktail Gala Elegance'
       }
     ],
@@ -363,4 +363,4 @@ export const INITIAL_REVIEWS: Review[] = [
 ];
 
 export const AGENCY_CS_TELEGRAM = 'csparadox_bot';
-export const HERO_BG_IMAGE = '/src/assets/images/hero_vip_nightlife_1794207019314.jpg';
+export const HERO_BG_IMAGE = '/images/hero_vip_nightlife_1794207019314.jpg';

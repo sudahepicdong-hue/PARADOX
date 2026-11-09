@@ -1,73 +1,51 @@
 import React, { useState, useEffect } from 'react';
 import { Talent, Review, UserAccount, SiteSettings } from './types/talent';
-import { INITIAL_TALENTS, INITIAL_REVIEWS, DEFAULT_SITE_SETTINGS } from './data/initialTalents';
+import { DEFAULT_SITE_SETTINGS } from './data/initialTalents';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { CatalogSection } from './components/CatalogSection';
 import { TalentDetailModal } from './components/TalentDetailModal';
-import { LiveShowcaseModal } from './components/LiveShowcaseModal';
-import { LiveBroadcastModal } from './components/LiveBroadcastModal';
+// Library live streaming cukup besar, jadi baru dimuat saat ruang live dibuka
+const LiveShowcaseModal = React.lazy(() =>
+  import('./components/LiveShowcaseModal').then((m) => ({ default: m.LiveShowcaseModal }))
+);
+const LiveBroadcastModal = React.lazy(() =>
+  import('./components/LiveBroadcastModal').then((m) => ({ default: m.LiveBroadcastModal }))
+);
 import { AuthModal } from './components/AuthModal';
 import { AdminPanelModal } from './components/AdminPanelModal';
 import { BookingGuide } from './components/BookingGuide';
 import { Footer } from './components/Footer';
+import { ReportModal, ReportTarget } from './components/ReportModal';
+import { ResetPasswordModal } from './components/ResetPasswordModal';
+import { TalentProfileModal } from './components/TalentProfileModal';
+import { AccountModal } from './components/AccountModal';
+import { AgeGate, hasConfirmedAge } from './components/AgeGate';
+import { UpcomingLives } from './components/UpcomingLives';
+import { InstallPrompt } from './components/InstallPrompt';
 import { Radio, Sparkles } from 'lucide-react';
+import { supabase } from './lib/supabase';
+import { loadAccount, signOut } from './lib/auth';
+import * as db from './lib/db';
+
+const errorText = (e: unknown) => (e instanceof Error ? e.message : String((e as any)?.message ?? e));
 
 export default function App() {
-  // Load site settings (PARADOX, Logo, Official Telegram CS, etc.)
-  const [siteSettings, setSiteSettings] = useState<SiteSettings>(() => {
-    try {
-      const saved = localStorage.getItem('paradox_site_settings');
-      if (saved) return { ...DEFAULT_SITE_SETTINGS, ...JSON.parse(saved) };
-    } catch (e) {
-      console.error('Error loading site settings', e);
-    }
-    return DEFAULT_SITE_SETTINGS;
-  });
+  // Semua data di bawah ini dimuat dari Supabase saat halaman dibuka.
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS);
+  const [talents, setTalents] = useState<Talent[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [schedules, setSchedules] = useState<db.LiveSchedule[]>([]);
+  const reloadSchedules = () =>
+    db.fetchUpcomingSchedules().then(setSchedules).catch((e) => console.warn('Gagal memuat jadwal live', e));
+  const [isDataLoading, setIsDataLoading] = useState(true);
+  const [dataError, setDataError] = useState<string | null>(null);
 
-  // Load talents from LocalStorage or use INITIAL_TALENTS
-  const [talents, setTalents] = useState<Talent[]>(() => {
-    try {
-      const saved = localStorage.getItem('paradox_talents_data');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error('Error loading talents from localStorage', e);
-    }
-    return INITIAL_TALENTS;
-  });
+  // User yang sedang login (diambil dari sesi Supabase Auth)
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
 
-  // Load reviews from LocalStorage or use INITIAL_REVIEWS
-  const [reviews, setReviews] = useState<Review[]>(() => {
-    try {
-      const saved = localStorage.getItem('paradox_reviews_data');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error('Error loading reviews from localStorage', e);
-    }
-    return INITIAL_REVIEWS;
-  });
-
-  // Load current user
-  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
-    try {
-      const saved = localStorage.getItem('paradox_user_profile');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error('Error loading user profile', e);
-    }
-    return null;
-  });
-
-  // Liked talents by this client
-  const [likedTalentIds, setLikedTalentIds] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('paradox_liked_talents');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error('Error loading likes', e);
-    }
-    return ['talent-1', 'talent-2'];
-  });
+  // Talent yang di-like oleh user yang sedang login
+  const [likedTalentIds, setLikedTalentIds] = useState<string[]>([]);
 
   // Modals state
   const [selectedDetailTalent, setSelectedDetailTalent] = useState<Talent | null>(null);
@@ -78,31 +56,184 @@ export default function App() {
   const [broadcastInitialTalent, setBroadcastInitialTalent] = useState<Talent | undefined>(undefined);
   const [activeFilterCategory, setActiveFilterCategory] = useState<string>('all');
   const [liveToastMessage, setLiveToastMessage] = useState<string | null>(null);
+  const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
+  const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
-  // Sync states to LocalStorage
+  // Katalog publik hanya menampilkan talent yang aktif & sudah diverifikasi 18+
+  // Status live dihitung ulang setiap 30 detik: kalau "detak" dari talent berhenti, badge LIVE hilang sendiri
+  const [nowTick, setNowTick] = useState(() => Date.now());
   useEffect(() => {
-    localStorage.setItem('paradox_site_settings', JSON.stringify(siteSettings));
-  }, [siteSettings]);
+    const id = window.setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+  const talentsView = React.useMemo(
+    () => talents.map((t) => (t.isLive && !db.isLiveNow(t, nowTick) ? { ...t, isLive: false } : t)),
+    [talents, nowTick]
+  );
+  const publicTalents = talentsView.filter(db.isPubliclyVisible);
 
-  useEffect(() => {
-    localStorage.setItem('paradox_talents_data', JSON.stringify(talents));
-  }, [talents]);
+  const [isAccountOpen, setIsAccountOpen] = useState(false);
+  const [ageConfirmed, setAgeConfirmed] = useState(hasConfirmedAge);
+  const myTalent = currentUser?.role === 'talent' ? talents.find((t) => t.id === currentUser.talentId) : undefined;
 
-  useEffect(() => {
-    localStorage.setItem('paradox_reviews_data', JSON.stringify(reviews));
-  }, [reviews]);
+  const showToast = (message: string, ms = 4000) => {
+    setLiveToastMessage(message);
+    setTimeout(() => setLiveToastMessage(null), ms);
+  };
 
-  useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem('paradox_user_profile', JSON.stringify(currentUser));
-    } else {
-      localStorage.removeItem('paradox_user_profile');
+  // Muat talent, ulasan, dan pengaturan website dari Supabase
+  const loadData = async () => {
+    setIsDataLoading(true);
+    setDataError(null);
+    try {
+      const [t, r, s] = await Promise.all([db.fetchTalents(), db.fetchReviews(), db.fetchSiteSettings()]);
+      setTalents(t);
+      setReviews(r);
+      setSiteSettings(s);
+      reloadSchedules();
+    } catch (e) {
+      console.error('Gagal memuat data', e);
+      setDataError(errorText(e));
+    } finally {
+      setIsDataLoading(false);
     }
+  };
+
+  useEffect(() => {
+    // Bersihkan sisa data versi lama yang dulu disimpan di browser
+    ['paradox_user_profile', 'paradox_talents_data', 'paradox_reviews_data', 'paradox_site_settings', 'paradox_liked_talents']
+      .forEach((key) => localStorage.removeItem(key));
+    loadData();
+  }, []);
+
+  // Pulihkan sesi login saat halaman dibuka, dan ikuti perubahan login/logout dari Supabase.
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!session?.user) {
+        setCurrentUser(null);
+        return;
+      }
+      // User membuka link "reset kata sandi" dari email
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsResetPasswordOpen(true);
+      }
+      if (event === 'INITIAL_SESSION' || event === 'USER_UPDATED' || event === 'PASSWORD_RECOVERY') {
+        const user = session.user;
+        // Ditunda agar tidak memanggil Supabase di dalam callback auth (bisa deadlock).
+        setTimeout(() => {
+          loadAccount(user)
+            .then(setCurrentUser)
+            .catch((e) => console.error('Gagal memuat profil', e));
+        }, 0);
+      }
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  // Daftar like ikut akun yang login
+  useEffect(() => {
+    setLikedTalentIds(currentUser?.likedTalentIds ?? []);
   }, [currentUser]);
 
+  // Ambil ulang daftar talent tanpa tampilan loading
+  const reloadTalents = () =>
+    db.fetchTalents()
+      .then(setTalents)
+      .catch((e) => console.error('Gagal memuat ulang talent', e));
+
+  // Admin/talent bisa melihat talent yang belum tampil di publik, jadi muat ulang saat akun berganti
+  const accountKey = currentUser ? `${currentUser.id}:${currentUser.role}:${currentUser.talentId ?? ''}` : 'guest';
+  const isFirstAccountKey = React.useRef(true);
   useEffect(() => {
-    localStorage.setItem('paradox_liked_talents', JSON.stringify(likedTalentIds));
-  }, [likedTalentIds]);
+    if (isFirstAccountKey.current) {
+      isFirstAccountKey.current = false;
+      return;
+    }
+    reloadTalents();
+  }, [accountKey]);
+
+  // Real-time: status live, talent baru, dan perubahan profil langsung muncul tanpa refresh
+  useEffect(() => {
+    const unsubscribe = db.subscribeTalents({
+      onUpsert: (t) =>
+        setTalents((prev) => (prev.some((x) => x.id === t.id) ? prev.map((x) => (x.id === t.id ? t : x)) : [t, ...prev])),
+      onDelete: (id) => setTalents((prev) => prev.filter((t) => t.id !== id))
+    });
+
+    // Saat tab dibuka lagi, sinkronkan ulang (misalnya ada talent yang disembunyikan selama tab tidak aktif)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        reloadTalents();
+        reloadSchedules();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      unsubscribe();
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
+
+  // Talent yang tidak lagi tampil di publik: tutup modal yang sedang membukanya (untuk pengunjung)
+  useEffect(() => {
+    const canSee = (t: Talent) => db.isPubliclyVisible(t) || currentUser?.role === 'admin' || t.id === currentUser?.talentId;
+    if (selectedDetailTalent) {
+      const t = talents.find((x) => x.id === selectedDetailTalent.id);
+      if (!t || !canSee(t)) setSelectedDetailTalent(null);
+    }
+    if (selectedLiveTalent) {
+      const t = talents.find((x) => x.id === selectedLiveTalent.id);
+      if (!t || !canSee(t)) setSelectedLiveTalent(null);
+      else if (t !== selectedLiveTalent) setSelectedLiveTalent(t);
+    }
+  }, [talents]);
+
+  // Ambil ulang 1 talent (setelah verifikasi, sembunyikan, dll.)
+  const refreshTalent = async (talentId: string) => {
+    const t = await db.fetchTalent(talentId);
+    setTalents((prev) =>
+      t ? (prev.some((x) => x.id === t.id) ? prev.map((x) => (x.id === t.id ? t : x)) : [t, ...prev]) : prev.filter((x) => x.id !== talentId)
+    );
+  };
+
+  // Hapus ulasan (admin atau penulisnya). Mengembalikan true kalau berhasil.
+  const handleDeleteReview = async (reviewId: string): Promise<boolean> => {
+    if (!confirm('Hapus ulasan ini?')) return false;
+    const talentId = reviews.find((r) => r.id === reviewId)?.talentId;
+    try {
+      await db.deleteReview(reviewId);
+      setReviews((prev) => prev.filter((r) => r.id !== reviewId));
+      if (talentId) await refreshTalent(talentId);
+      return true;
+    } catch (e) {
+      alert(`Gagal menghapus ulasan: ${errorText(e)}`);
+      return false;
+    }
+  };
+
+  // Talent menyimpan profilnya sendiri
+  const handleSaveOwnProfile = async (t: Talent) => {
+    const saved = await db.updateOwnTalent(t);
+    replaceTalent(saved);
+  };
+
+  // Talent menghapus profilnya sendiri; akunnya kembali jadi member biasa
+  const handleDeleteOwnProfile = async (talentId: string) => {
+    await db.deleteTalent(talentId);
+    setTalents((prev) => prev.filter((t) => t.id !== talentId));
+    setReviews((prev) => prev.filter((r) => r.talentId !== talentId));
+    setIsBroadcastOpen(false);
+    const { data } = await supabase.auth.getUser();
+    if (data.user) setCurrentUser(await loadAccount(data.user));
+    showToast('Profil talent Anda sudah dihapus.');
+  };
+
+  // Statistik: catat kunjungan profil (sekali per talent per sesi browser)
+  useEffect(() => {
+    if (selectedDetailTalent) db.recordTalentView(selectedDetailTalent.id);
+  }, [selectedDetailTalent?.id]);
 
   // Keep selectedDetailTalent updated if talents change (e.g., likes or reviews)
   useEffect(() => {
@@ -112,150 +243,121 @@ export default function App() {
     }
   }, [talents]);
 
-  // Like / Unlike handler
-  const handleToggleLike = (talentId: string) => {
-    const isCurrentlyLiked = likedTalentIds.includes(talentId);
+  const replaceTalent = (updated: Talent) =>
+    setTalents((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
 
-    setLikedTalentIds((prev) =>
-      isCurrentlyLiked ? prev.filter((id) => id !== talentId) : [...prev, talentId]
-    );
-
+  const adjustLikeCount = (talentId: string, delta: number) =>
     setTalents((prev) =>
-      prev.map((t) => {
-        if (t.id === talentId) {
-          const delta = isCurrentlyLiked ? -1 : 1;
-          return {
-            ...t,
-            likesCount: Math.max(0, t.likesCount + delta)
-          };
-        }
-        return t;
-      })
+      prev.map((t) => (t.id === talentId ? { ...t, likesCount: Math.max(0, t.likesCount + delta) } : t))
     );
+
+  // Like / Unlike: wajib login
+  const handleToggleLike = async (talentId: string) => {
+    if (!currentUser) {
+      showToast('Silakan masuk dulu untuk menyukai talent.');
+      setIsAuthOpen(true);
+      return;
+    }
+
+    const willLike = !likedTalentIds.includes(talentId);
+
+    // Update tampilan dulu supaya terasa cepat, lalu simpan ke database
+    setLikedTalentIds((prev) => (willLike ? [...prev, talentId] : prev.filter((id) => id !== talentId)));
+    adjustLikeCount(talentId, willLike ? 1 : -1);
+
+    try {
+      await db.setLike(currentUser.id, talentId, willLike);
+    } catch (e) {
+      // Batalkan perubahan tampilan kalau gagal
+      setLikedTalentIds((prev) => (willLike ? prev.filter((id) => id !== talentId) : [...prev, talentId]));
+      adjustLikeCount(talentId, willLike ? -1 : 1);
+      showToast(`Gagal menyimpan like: ${errorText(e)}`);
+    }
   };
 
-  // Add review handler
-  const handleAddReview = (talentId: string, rating: number, comment: string) => {
-    const authorName = currentUser?.name || 'Klien VIP (Guest)';
-    const newRev: Review = {
-      id: `rev-${Date.now()}`,
-      talentId,
-      userName: authorName,
-      rating,
-      comment,
-      createdAt: 'Baru saja',
-      isVerifiedClient: true
-    };
+  // Tambah / ganti ulasan: wajib login. Error dilempar ke form ulasan supaya bisa ditampilkan.
+  const handleAddReview = async (talentId: string, rating: number, comment: string) => {
+    if (!currentUser) {
+      setIsAuthOpen(true);
+      throw new Error('Silakan masuk dulu untuk menulis ulasan.');
+    }
+    await db.saveReview(currentUser.id, talentId, rating, comment);
 
-    const updatedReviews = [newRev, ...reviews];
+    // Rating rata-rata & jumlah ulasan dihitung database, jadi ambil ulang
+    const [updatedReviews, updatedTalent] = await Promise.all([db.fetchReviews(), db.fetchTalent(talentId)]);
     setReviews(updatedReviews);
-
-    // Recalculate average rating for this talent
-    const talentSpecificReviews = updatedReviews.filter((r) => r.talentId === talentId);
-    const sumRatings = talentSpecificReviews.reduce((sum, r) => sum + r.rating, 0);
-    const newAverage = sumRatings / talentSpecificReviews.length;
-
-    setTalents((prev) =>
-      prev.map((t) => {
-        if (t.id === talentId) {
-          return {
-            ...t,
-            ratingAverage: Number(newAverage.toFixed(2)),
-            reviewsCount: talentSpecificReviews.length
-          };
-        }
-        return t;
-      })
-    );
+    if (updatedTalent) replaceTalent(updatedTalent);
   };
+
+  const applyLiveState = (talentId: string, patch: Partial<Talent>) =>
+    setTalents((prev) => prev.map((t) => (t.id === talentId ? { ...t, ...patch } : t)));
 
   // Talent starts live broadcast
-  const handleStartLive = (
-    talentId: string,
-    title: string,
-    streamType: 'camera' | 'video',
-    customUrl?: string
-  ) => {
-    setTalents((prev) =>
-      prev.map((t) => {
-        if (t.id === talentId) {
-          return {
-            ...t,
-            isLive: true,
-            liveStatusText: 'Sedang Live Stream Sekarang',
-            liveStreamTitle: title,
-            liveStreamType: streamType,
-            liveStreamUrl: customUrl || t.liveStreamUrl,
-            liveViewersCount: (t.liveViewersCount || 100) + 15
-          };
-        }
-        return t;
-      })
-    );
-
-    const talentObj = talents.find((t) => t.id === talentId);
-    setLiveToastMessage(
-      `🔴 Siaran Live ${talentObj?.name || 'Talent'} telah dimulai! Pengunjung dapat langsung menonton di katalog.`
-    );
-    setTimeout(() => setLiveToastMessage(null), 5000);
-  };
-
-  // Talent stops live broadcast
-  const handleStopLive = (talentId: string) => {
-    setTalents((prev) =>
-      prev.map((t) => {
-        if (t.id === talentId) {
-          return {
-            ...t,
-            isLive: false,
-            liveStatusText: 'Offline'
-          };
-        }
-        return t;
-      })
-    );
-    setLiveToastMessage('Siaran live telah dihentikan.');
-    setTimeout(() => setLiveToastMessage(null), 3000);
-  };
-
-  // Admin save talent (Create or Update)
-  const handleSaveTalent = (savedTalent: Talent) => {
-    setTalents((prev) => {
-      const exists = prev.some((t) => t.id === savedTalent.id);
-      if (exists) {
-        return prev.map((t) => (t.id === savedTalent.id ? savedTalent : t));
-      }
-      return [savedTalent, ...prev];
+  // Talent mulai live (dipanggil studio setelah kamera tersambung ke LiveKit). Error dilempar ke studio.
+  const handleStartLive = async (talentId: string, title: string) => {
+    await db.setTalentLive(talentId, true, { title, streamType: 'camera' });
+    applyLiveState(talentId, {
+      isLive: true,
+      liveStatusText: 'Sedang Live Stream Sekarang',
+      liveStreamTitle: title,
+      liveStreamType: 'camera',
+      liveHeartbeatAt: new Date().toISOString()
     });
+    const name = talents.find((t) => t.id === talentId)?.name || 'Talent';
+    showToast(`🔴 Siaran live ${name} dimulai! Pengunjung bisa langsung menonton.`, 5000);
+  };
+
+  // Talent mengakhiri live
+  const handleStopLive = async (talentId: string) => {
+    applyLiveState(talentId, { isLive: false, liveStatusText: 'Offline', liveHeartbeatAt: undefined });
+    await db.setTalentLive(talentId, false);
+    showToast('Siaran live telah dihentikan.', 3000);
+  };
+
+  // Admin save talent (Create or Update). Error dilempar ke panel admin.
+  const handleSaveTalent = async (talent: Talent) => {
+    const saved = await db.saveTalent(talent);
+    setTalents((prev) =>
+      prev.some((t) => t.id === saved.id) ? prev.map((t) => (t.id === saved.id ? saved : t)) : [saved, ...prev]
+    );
   };
 
   // Admin delete talent
-  const handleDeleteTalent = (talentId: string) => {
-    if (confirm('Yakin ingin menghapus talent ini dari katalog?')) {
+  const handleDeleteTalent = async (talentId: string) => {
+    if (!confirm('Yakin ingin menghapus talent ini dari katalog? Semua ulasan & like-nya ikut terhapus.')) return;
+    try {
+      // Hapus akun login talent dulu (kalau fungsi belum di-deploy, lanjut saja)
+      await db.removeTalentLogin(talentId).catch((e) => console.warn('Login talent tidak terhapus', e));
+      await db.deleteTalent(talentId);
       setTalents((prev) => prev.filter((t) => t.id !== talentId));
+      setReviews((prev) => prev.filter((r) => r.talentId !== talentId));
       if (selectedDetailTalent?.id === talentId) setSelectedDetailTalent(null);
       if (selectedLiveTalent?.id === talentId) setSelectedLiveTalent(null);
+    } catch (e) {
+      alert(`Gagal menghapus talent: ${errorText(e)}`);
     }
   };
 
-  // Admin save site settings
-  const handleSaveSiteSettings = (newSettings: SiteSettings) => {
+  // Admin save site settings. Error dilempar ke panel admin.
+  const handleSaveSiteSettings = async (newSettings: SiteSettings) => {
+    await db.saveSiteSettings(newSettings);
     setSiteSettings(newSettings);
   };
 
-  // Admin reset data to default
-  const handleResetDefault = () => {
-    if (confirm('Kembalikan semua data talent & pengaturan ke bawaan awal PARADOX?')) {
-      setTalents(INITIAL_TALENTS);
-      setReviews(INITIAL_REVIEWS);
+  // Admin reset pengaturan website ke bawaan (data talent tidak disentuh)
+  const handleResetDefault = async () => {
+    if (!confirm('Kembalikan pengaturan website (brand, logo, teks, Telegram CS) ke bawaan awal PARADOX?')) return;
+    try {
+      await db.saveSiteSettings(DEFAULT_SITE_SETTINGS);
       setSiteSettings(DEFAULT_SITE_SETTINGS);
-      localStorage.removeItem('paradox_talents_data');
-      localStorage.removeItem('paradox_reviews_data');
-      localStorage.removeItem('paradox_site_settings');
+      showToast('Pengaturan website dikembalikan ke bawaan.');
+    } catch (e) {
+      alert(`Gagal reset pengaturan: ${errorText(e)}`);
     }
   };
 
-  const liveTalentsCount = talents.filter((t) => t.isLive).length;
+
+  const liveTalentsCount = publicTalents.filter((t) => t.isLive).length;
 
   const scrollToCatalog = () => {
     const el = document.getElementById('katalog');
@@ -266,6 +368,17 @@ export default function App() {
     setActiveFilterCategory('live');
     scrollToCatalog();
   };
+
+  // Konfirmasi 18+ sebelum isi website ditampilkan
+  if (!ageConfirmed) {
+    return (
+      <AgeGate
+        brandName={siteSettings.brandName}
+        logoUrl={siteSettings.logoUrl}
+        onConfirm={() => setAgeConfirmed(true)}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#07080D] text-slate-100 flex flex-col font-sans selection:bg-red-500/30 selection:text-red-200">
@@ -281,11 +394,22 @@ export default function App() {
       <Navbar
         currentUser={currentUser}
         onOpenAuth={() => setIsAuthOpen(true)}
-        onLogout={() => setCurrentUser(null)}
+        onLogout={() => {
+          setCurrentUser(null);
+          signOut();
+        }}
         onOpenAdmin={() => setIsAdminOpen(true)}
+        onOpenProfile={() => {
+          if (myTalent) setIsProfileOpen(true);
+          else showToast('Akun Anda belum terhubung ke profil talent. Hubungi admin.');
+        }}
+        onOpenAccount={() => setIsAccountOpen(true)}
         onOpenBroadcast={() => {
           if (currentUser?.role === 'talent') {
-            const myTalent = talents.find((t) => t.id === currentUser.talentId) || talents[0];
+            if (!myTalent) {
+              showToast('Akun Anda belum terhubung ke profil talent. Hubungi admin.');
+              return;
+            }
             setBroadcastInitialTalent(myTalent);
             setIsBroadcastOpen(true);
           } else if (currentUser?.role === 'admin') {
@@ -310,9 +434,33 @@ export default function App() {
           siteSettings={siteSettings}
         />
 
+        {(isDataLoading || dataError) && (
+          <div className="max-w-3xl mx-auto px-4 pt-10">
+            {isDataLoading ? (
+              <p className="text-center text-sm text-slate-400">Memuat katalog talent...</p>
+            ) : (
+              <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-sm text-rose-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <span>Gagal memuat data dari server: {dataError}</span>
+                <button
+                  onClick={loadData}
+                  className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold cursor-pointer shrink-0"
+                >
+                  Coba Lagi
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Talent Catalog with Filter & Search */}
+        <UpcomingLives
+          talents={publicTalents}
+          schedules={schedules}
+          onOpenDetail={(talent) => setSelectedDetailTalent(talent)}
+        />
+
         <CatalogSection
-          talents={talents}
+          talents={publicTalents}
           onOpenDetail={(talent) => setSelectedDetailTalent(talent)}
           onOpenLive={(talent) => setSelectedLiveTalent(talent)}
           onToggleLike={handleToggleLike}
@@ -342,13 +490,17 @@ export default function App() {
             setSelectedLiveTalent(t);
           }}
           brandName={siteSettings.brandName}
+          onReport={setReportTarget}
+          onDeleteReview={handleDeleteReview}
+          schedules={schedules.filter((s) => s.talentId === selectedDetailTalent.id)}
         />
       )}
 
       {/* Live Stream Showcase Modal (Spectator Room) */}
       {selectedLiveTalent && (
+        <React.Suspense fallback={null}>
         <LiveShowcaseModal
-          talent={selectedLiveTalent}
+          talent={talentsView.find((t) => t.id === selectedLiveTalent.id) ?? selectedLiveTalent}
           onClose={() => setSelectedLiveTalent(null)}
           onOpenDetail={(t) => {
             setSelectedLiveTalent(null);
@@ -357,11 +509,17 @@ export default function App() {
           onToggleLike={handleToggleLike}
           isLiked={likedTalentIds.includes(selectedLiveTalent.id)}
           brandName={siteSettings.brandName}
+          canChat={Boolean(currentUser)}
+          myName={currentUser?.name}
+          onRequestLogin={() => setIsAuthOpen(true)}
+          isModerator={currentUser?.role === 'admin' || currentUser?.talentId === selectedLiveTalent.id}
         />
+        </React.Suspense>
       )}
 
       {/* Talent Go Live Broadcast Studio Modal (Talent / Admin Broadcaster) */}
       {isBroadcastOpen && (
+        <React.Suspense fallback={null}>
         <LiveBroadcastModal
           talents={talents}
           initialTalent={broadcastInitialTalent}
@@ -373,27 +531,30 @@ export default function App() {
           onStartLive={handleStartLive}
           onStopLive={handleStopLive}
         />
+        </React.Suspense>
       )}
 
       {/* Login & Register Modal with Dedicated Talent Host Tab */}
       {isAuthOpen && (
         <AuthModal
-          talents={talents}
           onClose={() => setIsAuthOpen(false)}
-          onLoginSuccess={(user) => {
+          onLoginSuccess={async (user) => {
             setCurrentUser(user);
             if (user.role === 'talent') {
-              const myTalent = talents.find((t) => t.id === user.talentId) || talents[0];
-              setBroadcastInitialTalent(myTalent);
+              // Profil talent bisa saja belum tampil di publik, jadi ambil langsung sebagai talent yang login
+              const own = user.talentId ? await db.fetchTalent(user.talentId).catch(() => null) : null;
+              if (!own) {
+                showToast('Akun Anda belum terhubung ke profil talent. Hubungi admin.', 5000);
+                return;
+              }
+              setTalents((prev) => (prev.some((t) => t.id === own.id) ? prev.map((t) => (t.id === own.id ? own : t)) : [own, ...prev]));
+              setBroadcastInitialTalent(own);
               setIsBroadcastOpen(true);
-              setLiveToastMessage(`🔴 Selamat datang, ${user.name}! Studio live streaming Anda siap digunakan.`);
-              setTimeout(() => setLiveToastMessage(null), 5000);
+              showToast(`🔴 Selamat datang, ${user.name}! Studio live Anda siap digunakan.`, 5000);
             } else if (user.role === 'admin') {
-              setLiveToastMessage(`Selamat datang, Admin! Anda memiliki akses penuh ke Admin Studio.`);
-              setTimeout(() => setLiveToastMessage(null), 4000);
+              showToast(`Selamat datang, Admin! Anda memiliki akses penuh ke Admin Studio.`);
             } else {
-              setLiveToastMessage(`Selamat datang, ${user.name}! Status VIP Anda aktif.`);
-              setTimeout(() => setLiveToastMessage(null), 4000);
+              showToast(`Selamat datang, ${user.name}! Status VIP Anda aktif.`);
             }
           }}
         />
@@ -404,7 +565,10 @@ export default function App() {
         <AdminPanelModal
           talents={talents}
           siteSettings={siteSettings}
-          onClose={() => setIsAdminOpen(false)}
+          onClose={() => {
+            setIsAdminOpen(false);
+            reloadSchedules();
+          }}
           onSaveTalent={handleSaveTalent}
           onDeleteTalent={handleDeleteTalent}
           onResetDefaultTalents={handleResetDefault}
@@ -414,8 +578,49 @@ export default function App() {
             setBroadcastInitialTalent(talent);
             setIsBroadcastOpen(true);
           }}
+          reviews={reviews}
+          onDeleteReview={handleDeleteReview}
+          onTalentChanged={refreshTalent}
         />
       )}
+
+      {/* Profil Saya (khusus talent) */}
+      {isProfileOpen && myTalent && (
+        <TalentProfileModal
+          talent={myTalent}
+          onClose={() => {
+            setIsProfileOpen(false);
+            reloadSchedules();
+          }}
+          onSave={handleSaveOwnProfile}
+          onDelete={handleDeleteOwnProfile}
+        />
+      )}
+
+      {/* Akun Saya: ganti nama, unduh data, hapus akun */}
+      {isAccountOpen && currentUser && (
+        <AccountModal
+          user={currentUser}
+          onClose={() => setIsAccountOpen(false)}
+          onNameChanged={(name) => setCurrentUser({ ...currentUser, name, likedTalentIds })}
+          onDeleted={() => {
+            setIsAccountOpen(false);
+            setCurrentUser(null);
+            signOut();
+            loadData();
+            showToast('Akun Anda sudah dihapus. Terima kasih sudah berkunjung.');
+          }}
+        />
+      )}
+
+      {/* Laporkan profil / ulasan */}
+      {reportTarget && <ReportModal target={reportTarget} onClose={() => setReportTarget(null)} />}
+
+      {/* Ajakan install website sebagai aplikasi di HP */}
+      <InstallPrompt brandName={siteSettings.brandName} />
+
+      {/* Buat kata sandi baru setelah membuka link reset dari email */}
+      {isResetPasswordOpen && <ResetPasswordModal onDone={() => setIsResetPasswordOpen(false)} />}
     </div>
   );
 }

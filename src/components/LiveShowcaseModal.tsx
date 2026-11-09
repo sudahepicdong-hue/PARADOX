@@ -1,20 +1,19 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Room, RoomEvent, Track, RemoteTrack, RemoteParticipant, DisconnectReason } from 'livekit-client';
+import { X, Radio, Users, Heart, Volume2, Loader2, User as UserIcon } from 'lucide-react';
 import { Talent } from '../types/talent';
+import { getLiveToken, moderateLive } from '../lib/db';
 import {
-  X,
-  Radio,
-  Send,
-  Users,
-  Heart,
-  MessageCircle,
-  Volume2,
-  VolumeX,
-  Sparkles,
-  Gift,
-  Maximize2,
-  Minimize2,
-  Check
-} from 'lucide-react';
+  ChatMessage,
+  appendMessage,
+  removeMessage,
+  decodeData,
+  encodeData,
+  isHostParticipant,
+  isModeratorParticipant,
+  newMessageId
+} from '../lib/live';
+import { LiveChat, ChatModeration } from './LiveChat';
 
 interface LiveShowcaseModalProps {
   talent: Talent;
@@ -23,22 +22,22 @@ interface LiveShowcaseModalProps {
   onToggleLike: (talentId: string) => void;
   isLiked: boolean;
   brandName?: string;
-  activeMediaStream?: MediaStream | null;
+  canChat: boolean; // sudah login?
+  myName?: string;
+  onRequestLogin: () => void;
+  isModerator?: boolean; // admin yang menonton: boleh hapus pesan / keluarkan / blokir
 }
 
-interface LiveChat {
-  id: string;
-  user: string;
-  text: string;
-  gift?: string;
-}
+type Status = 'connecting' | 'waiting' | 'playing' | 'ended' | 'error';
 
-interface FloatingReaction {
+interface FloatingHeart {
   id: number;
-  emoji: string;
   left: number;
 }
 
+const errorText = (e: unknown) => (e instanceof Error ? e.message : String((e as any)?.message ?? e));
+
+// Ruang tonton: video & suara asli dari kamera talent (LiveKit), chat & reaksi sungguhan.
 export const LiveShowcaseModal: React.FC<LiveShowcaseModalProps> = ({
   talent,
   onClose,
@@ -46,335 +45,287 @@ export const LiveShowcaseModal: React.FC<LiveShowcaseModalProps> = ({
   onToggleLike,
   isLiked,
   brandName = 'PARADOX',
-  activeMediaStream = null
+  canChat,
+  myName,
+  onRequestLogin,
+  isModerator = false
 }) => {
-  const [isMuted, setIsMuted] = useState(true);
-  const [viewers, setViewers] = useState(talent.liveViewersCount || 148);
-  const [chatInput, setChatInput] = useState('');
-  const [chats, setChats] = useState<LiveChat[]>([
-    { id: '1', user: 'VipClubber_JKT', text: 'Malam kak! Senyumnya manis banget ❤️' },
-    { id: '2', user: 'Rian_Bali', text: 'Keren banget outfitnya malam ini 🔥' },
-    { id: '3', user: 'Hendro_P', text: 'Besok ready dinner date di SCBD kah?' },
-    { id: '4', user: 'NightOwl99', text: 'Kirim bunga mawar buat kakak cantik 🌹', gift: '🌹' }
-  ]);
+  const [status, setStatus] = useState<Status>(talent.isLive ? 'connecting' : 'ended');
+  const [error, setError] = useState('');
+  const [viewers, setViewers] = useState(0);
+  const [needsAudioClick, setNeedsAudioClick] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [hearts, setHearts] = useState<FloatingHeart[]>([]);
 
-  const [reactions, setReactions] = useState<FloatingReaction[]>([]);
-  const [activeGiftSent, setActiveGiftSent] = useState<string | null>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const audioBoxRef = useRef<HTMLDivElement>(null);
+  const roomRef = useRef<Room | null>(null);
 
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-
-  // Periodic simulated live viewer fluctuation
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setViewers((v) => Math.max(12, v + Math.floor(Math.random() * 5) - 2));
-    }, 4500);
-    return () => clearInterval(timer);
-  }, []);
-
-  // Periodic simulated incoming spectator comments
-  useEffect(() => {
-    const simulatedComments = [
-      { user: 'Arthur_SCBD', text: 'Halo kak, fast response banget di Telegram!' },
-      { user: 'Budi_Surabaya', text: 'Vibesnya elegan banget, cocok jadi host pesta kita.' },
-      { user: 'Reza_VIP', text: 'Cantik natural, posturnya ideal banget 😍' },
-      { user: 'Kevin_Jkt', text: 'Nanti malam ada jadwal hangout?', gift: '🍾' }
-    ];
-
-    const commentInterval = setInterval(() => {
-      const randomComment = simulatedComments[Math.floor(Math.random() * simulatedComments.length)];
-      setChats((prev) => [
-        ...prev.slice(-15), // keep last 15 chats
-        {
-          id: Date.now().toString(),
-          user: randomComment.user,
-          text: randomComment.text,
-          gift: randomComment.gift
-        }
-      ]);
-
-      // Pop floating reaction
-      if (randomComment.gift) {
-        addReaction(randomComment.gift);
-      }
-    }, 7000);
-
-    return () => clearInterval(commentInterval);
-  }, []);
-
-  // Hook live video stream object if provided
-  useEffect(() => {
-    if (activeMediaStream && videoRef.current) {
-      videoRef.current.srcObject = activeMediaStream;
-      videoRef.current.play().catch(console.error);
-    }
-  }, [activeMediaStream]);
-
-  const addReaction = (emoji: string) => {
+  const popHeart = () => {
     const id = Date.now() + Math.random();
-    const left = Math.floor(Math.random() * 60) + 20; // 20% to 80%
-    setReactions((prev) => [...prev, { id, emoji, left }]);
-
-    setTimeout(() => {
-      setReactions((prev) => prev.filter((r) => r.id !== id));
-    }, 2200);
+    setHearts((h) => [...h.slice(-20), { id, left: 15 + Math.random() * 70 }]);
+    setTimeout(() => setHearts((h) => h.filter((x) => x.id !== id)), 1600);
   };
 
-  const handleSendChat = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chatInput.trim()) return;
-    setChats((prev) => [
-      ...prev,
-      {
-        id: Date.now().toString(),
-        user: 'Anda (VIP)',
-        text: chatInput.trim()
+  // Sambung ke ruang live sekali saat modal dibuka (dan talent sedang live)
+  useEffect(() => {
+    if (!talent.isLive) return;
+    let cancelled = false;
+    const room = new Room({ adaptiveStream: true, dynacast: true });
+    roomRef.current = room;
+
+    const countViewers = () => {
+      let n = 1; // diri sendiri
+      room.remoteParticipants.forEach((p: RemoteParticipant) => {
+        if (!isHostParticipant(p)) n++;
+      });
+      setViewers(n);
+    };
+
+    const hostHasVideo = () => {
+      let found = false;
+      room.remoteParticipants.forEach((p) => {
+        if (isHostParticipant(p) && p.getTrackPublication(Track.Source.Camera)?.track) found = true;
+      });
+      return found;
+    };
+
+    room
+      .on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant) => {
+        if (!isHostParticipant(participant)) return;
+        if (track.kind === Track.Kind.Video && videoRef.current) {
+          track.attach(videoRef.current);
+          setStatus('playing');
+        } else if (track.kind === Track.Kind.Audio && audioBoxRef.current) {
+          audioBoxRef.current.appendChild(track.attach());
+        }
+      })
+      .on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => {
+        track.detach();
+        if (!hostHasVideo()) setStatus('waiting');
+      })
+      .on(RoomEvent.ParticipantConnected, countViewers)
+      .on(RoomEvent.ParticipantDisconnected, (p) => {
+        countViewers();
+        if (isHostParticipant(p)) setStatus('ended');
+      })
+      .on(RoomEvent.AudioPlaybackStatusChanged, () => setNeedsAudioClick(!room.canPlaybackAudio))
+      .on(RoomEvent.DataReceived, (payload, participant) => {
+        const data = decodeData(payload);
+        if (!data) return;
+        if (data.type === 'heart') popHeart();
+        else if (data.type === 'delete') {
+          // Hanya host / moderator yang boleh menghapus pesan orang lain
+          if (isModeratorParticipant(participant)) setMessages((prev) => removeMessage(prev, data.id));
+        } else
+          setMessages((prev) =>
+            appendMessage(prev, {
+              id: data.id,
+              name: participant?.name || 'Tamu',
+              text: data.text,
+              isHost: isHostParticipant(participant),
+              senderIdentity: participant?.identity
+            })
+          );
+      })
+      .on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
+        if (cancelled) return;
+        if (reason === DisconnectReason.PARTICIPANT_REMOVED) {
+          setError('Anda dikeluarkan dari siaran ini oleh host.');
+          setStatus('error');
+        }
+      });
+
+    (async () => {
+      try {
+        const { token, url } = await getLiveToken(talent.id, 'viewer');
+        if (cancelled) return;
+        await room.connect(url, token);
+        if (cancelled) return;
+        countViewers();
+        setNeedsAudioClick(!room.canPlaybackAudio);
+        if (!hostHasVideo()) setStatus((s) => (s === 'playing' ? s : 'waiting'));
+      } catch (e) {
+        if (!cancelled) {
+          const msg = errorText(e);
+          setError(msg.includes('diblokir') ? msg : `Gagal memuat siaran: ${msg}`);
+          setStatus('error');
+        }
       }
-    ]);
-    setChatInput('');
+    })();
+
+    return () => {
+      cancelled = true;
+      room.disconnect();
+      roomRef.current = null;
+    };
+  }, [talent.id]);
+
+  // Talent mengakhiri live (diketahui lewat update real-time)
+  useEffect(() => {
+    if (!talent.isLive) setStatus('ended');
+  }, [talent.isLive]);
+
+  const sendChat = (text: string) => {
+    const room = roomRef.current;
+    if (!room) return;
+    const id = newMessageId();
+    room.localParticipant.publishData(encodeData({ type: 'chat', id, text }), { reliable: true }).catch(() => {});
+    setMessages((prev) => appendMessage(prev, { id, name: myName || 'Saya', text, isHost: false, isMine: true }));
   };
 
-  const handleSendGift = (giftName: string, emoji: string) => {
-    addReaction(emoji);
-    setActiveGiftSent(`Anda mengirim ${giftName} ${emoji}`);
-    setChats((prev) => [
-      ...prev,
-      {
-        id: Date.now().toString(),
-        user: 'Anda (VIP)',
-        text: `Mengirim hadiah virtual ${giftName} ${emoji}!`,
-        gift: emoji
+  // Moderasi oleh admin yang sedang menonton
+  const deleteForAll = (ids: string[]) => {
+    for (const id of ids) {
+      roomRef.current?.localParticipant.publishData(encodeData({ type: 'delete', id }), { reliable: true }).catch(() => {});
+    }
+    setMessages((prev) => prev.filter((m) => !ids.includes(m.id)));
+  };
+
+  const moderation: ChatModeration = {
+    onDelete: (m) => deleteForAll([m.id]),
+    onKick: async (m) => {
+      if (!m.senderIdentity || !confirm(`Keluarkan ${m.name} dari siaran?`)) return;
+      try {
+        await moderateLive(talent.id, 'kick', m.senderIdentity, m.name);
+      } catch (e) {
+        alert(errorText(e));
       }
-    ]);
-    setTimeout(() => setActiveGiftSent(null), 2500);
+    },
+    onBan: async (m) => {
+      if (!m.senderIdentity || !confirm(`Blokir ${m.name} dari siaran ${talent.name}?`)) return;
+      try {
+        await moderateLive(talent.id, 'ban', m.senderIdentity, m.name);
+        deleteForAll(messages.filter((x) => x.senderIdentity === m.senderIdentity).map((x) => x.id));
+      } catch (e) {
+        alert(errorText(e));
+      }
+    }
   };
 
-  const telegramDirectUrl = `https://t.me/${talent.telegramUsername}?text=${encodeURIComponent(
-    `Halo ${talent.name}, saya sedang menonton sesi LIVE Anda di ${brandName}! Mau konsultasi private chat / booking.`
-  )}`;
+  const sendHeart = () => {
+    if (!canChat) {
+      onRequestLogin();
+      return;
+    }
+    roomRef.current?.localParticipant.publishData(encodeData({ type: 'heart' }), { reliable: false }).catch(() => {});
+    popHeart();
+  };
 
-  const videoSource =
-    talent.liveStreamUrl ||
-    talent.media.find((m) => m.type === 'video')?.url ||
-    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
+  const cover = talent.media.find((m) => m.type === 'image')?.url;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-md">
-      <div 
-        ref={containerRef}
-        className="relative w-full max-w-4xl bg-[#090A10] border border-red-500/40 rounded-2xl shadow-2xl overflow-hidden flex flex-col md:flex-row max-h-[92vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 z-30 p-2 text-slate-300 hover:text-white bg-black/70 rounded-full hover:bg-black/90 transition-colors cursor-pointer border border-white/10"
-          aria-label="Tutup Live Stream"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
-        {/* Video Stream Stage */}
-        <div className="relative flex-1 bg-black aspect-[4/5] md:aspect-auto flex items-center justify-center overflow-hidden">
-          {activeMediaStream ? (
-            <video
-              ref={videoRef}
-              className="w-full h-full object-cover transform -scale-x-100"
-              autoPlay
-              playsInline
-              muted={isMuted}
-            />
-          ) : (
-            <video
-              src={videoSource}
-              className="w-full h-full object-cover"
-              autoPlay
-              loop
-              muted={isMuted}
-              playsInline
-            />
-          )}
-
-          {/* Floating animated reactions (hearts / gifts) */}
-          <div className="absolute inset-0 pointer-events-none overflow-hidden z-20">
-            {reactions.map((r) => (
-              <div
-                key={r.id}
-                className="absolute bottom-10 text-3xl animate-bounce transition-all duration-1000 transform opacity-90"
-                style={{
-                  left: `${r.left}%`,
-                  animation: 'floatUp 2s ease-out forwards'
-                }}
-              >
-                {r.emoji}
-              </div>
-            ))}
-          </div>
-
-          {/* Top Live Bar */}
-          <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
-            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-600 text-white text-xs font-black shadow-lg shadow-red-900/60">
-              <Radio className="w-3.5 h-3.5 animate-pulse text-white" />
-              <span>LIVE</span>
-            </span>
-            <div className="flex items-center gap-1 bg-black/70 backdrop-blur-md px-2.5 py-1 rounded-full text-xs text-white border border-white/10">
-              <Users className="w-3 h-3 text-red-400" />
-              <span className="font-mono tabular-nums">{viewers} Menonton</span>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/95 backdrop-blur-md overflow-y-auto">
+      <div className="relative w-full max-w-5xl bg-[#090A10] border border-red-500/40 rounded-2xl shadow-2xl overflow-hidden my-auto flex flex-col max-h-[96vh]">
+        {/* Header */}
+        <div className="px-4 sm:px-6 py-3 border-b border-white/10 flex items-center justify-between gap-3">
+          <button onClick={() => onOpenDetail(talent)} className="flex items-center gap-3 min-w-0 text-left cursor-pointer group">
+            <img src={cover} alt={talent.name} className="w-9 h-9 rounded-full object-cover border border-red-500/50 shrink-0" />
+            <div className="min-w-0">
+              <div className="font-bold text-white text-sm truncate group-hover:text-red-300">{talent.name}</div>
+              <div className="text-[11px] text-slate-400 truncate">{talent.liveStreamTitle || `Live di ${brandName}`}</div>
             </div>
-          </div>
-
-          {/* Video audio toggle & Like shortcut */}
-          <div className="absolute bottom-4 left-4 z-20 flex items-center gap-2">
+          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {status === 'playing' && (
+              <span className="flex items-center gap-1 text-xs text-slate-300 bg-white/5 px-2 py-1 rounded-full">
+                <Users className="w-3.5 h-3.5" /> {viewers}
+              </span>
+            )}
             <button
-              onClick={() => setIsMuted(!isMuted)}
-              className="p-2.5 rounded-full bg-black/70 text-white border border-white/20 hover:bg-black/90 cursor-pointer backdrop-blur-md"
-              title={isMuted ? 'Nyalakan Suara' : 'Bisukan Suara'}
+              onClick={() => onToggleLike(talent.id)}
+              className={`p-2 rounded-lg border cursor-pointer ${isLiked ? 'bg-rose-600/20 border-rose-500/50 text-rose-400' : 'border-white/10 text-slate-400 hover:text-rose-300'}`}
+              title={isLiked ? 'Batal suka' : 'Suka'}
             >
-              {isMuted ? <VolumeX className="w-4 h-4 text-slate-300" /> : <Volume2 className="w-4 h-4 text-red-400" />}
+              <Heart className={`w-4 h-4 ${isLiked ? 'fill-rose-500' : ''}`} />
             </button>
-            <button
-              onClick={() => {
-                onToggleLike(talent.id);
-                addReaction('❤️');
-              }}
-              className={`p-2.5 rounded-full border backdrop-blur-md transition-all cursor-pointer ${
-                isLiked
-                  ? 'bg-red-600 text-white border-red-400 shadow-lg shadow-red-600/30'
-                  : 'bg-black/70 text-white border-white/20 hover:bg-red-500/20'
-              }`}
-              title="Kirim Cinta ke Talent"
-            >
-              <Heart className={`w-4 h-4 ${isLiked ? 'fill-white' : ''}`} />
+            <button onClick={onClose} className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-white/10 cursor-pointer" aria-label="Tutup">
+              <X className="w-5 h-5" />
             </button>
           </div>
-
-          {/* Gift Sent Toast Banner */}
-          {activeGiftSent && (
-            <div className="absolute top-16 inset-x-4 z-30 flex justify-center">
-              <div className="px-4 py-2 rounded-full bg-gradient-to-r from-red-600 to-rose-700 text-white text-xs font-bold shadow-xl shadow-red-600/40 flex items-center gap-2 animate-pulse">
-                <Sparkles className="w-4 h-4 text-amber-300" />
-                <span>{activeGiftSent}</span>
-              </div>
-            </div>
-          )}
         </div>
 
-        {/* Live Interaction & Direct Telegram Call Side Panel */}
-        <div className="w-full md:w-88 bg-[#0C0E14] border-t md:border-t-0 md:border-l border-white/10 flex flex-col justify-between p-4 sm:p-5">
-          {/* Header Info */}
-          <div className="space-y-3 pb-3 border-b border-white/10">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-display font-bold text-lg text-white flex items-center gap-1.5">
-                  <span>{talent.name}</span>
-                </h3>
-                <span className="text-xs text-red-400 font-mono">
-                  @{talent.telegramUsername}
-                </span>
-              </div>
-              <button
-                onClick={() => {
-                  onClose();
-                  onOpenDetail(talent);
-                }}
-                className="text-xs text-red-400 hover:text-red-300 underline cursor-pointer"
-              >
-                Lihat Profil
-              </button>
-            </div>
+        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3">
+          {/* Video */}
+          <div className="lg:col-span-2 p-3 sm:p-4">
+            <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/10">
+              <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-contain" />
+              <div ref={audioBoxRef} className="hidden" />
 
-            {/* Direct Telegram Live Call button */}
-            <a
-              href={telegramDirectUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full py-3 px-3 rounded-xl font-bold text-xs text-white bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:brightness-110 shadow-lg shadow-red-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <Send className="w-4 h-4" />
-              <span>Private Chat / Booking di Telegram</span>
-            </a>
-          </div>
-
-          {/* Virtual Gift Strip */}
-          <div className="py-2 border-b border-white/5 space-y-1.5">
-            <span className="text-[10px] text-slate-400 uppercase tracking-wider flex items-center gap-1 font-semibold">
-              <Gift className="w-3 h-3 text-red-400" />
-              Kirim Hadiah Virtual Live
-            </span>
-            <div className="grid grid-cols-4 gap-1.5">
-              <button
-                type="button"
-                onClick={() => handleSendGift('Mawar', '🌹')}
-                className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 hover:border-red-500/30 text-center transition-all cursor-pointer"
-                title="Kirim Mawar Merah"
-              >
-                <div className="text-lg">🌹</div>
-                <div className="text-[10px] text-slate-400">Mawar</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSendGift('Champagne', '🍾')}
-                className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 hover:border-red-500/30 text-center transition-all cursor-pointer"
-                title="Kirim Champagne"
-              >
-                <div className="text-lg">🍾</div>
-                <div className="text-[10px] text-slate-400">Champagne</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSendGift('Diamond VIP', '💎')}
-                className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 hover:border-red-500/30 text-center transition-all cursor-pointer"
-                title="Kirim Diamond VIP"
-              >
-                <div className="text-lg">💎</div>
-                <div className="text-[10px] text-slate-400">Diamond</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSendGift('Crown', '👑')}
-                className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 hover:border-red-500/30 text-center transition-all cursor-pointer"
-                title="Kirim Mahkota Ratu"
-              >
-                <div className="text-lg">👑</div>
-                <div className="text-[10px] text-slate-400">Crown</div>
-              </button>
-            </div>
-          </div>
-
-          {/* Live Chat stream */}
-          <div className="flex-1 my-2 overflow-y-auto space-y-2 pr-1 max-h-44 md:max-h-56">
-            <div className="text-[10px] text-red-400 font-mono tracking-wider uppercase mb-1">
-              Live Chat Interaktif
-            </div>
-            {chats.map((c) => (
-              <div key={c.id} className="text-xs bg-black/50 p-2 rounded-lg border border-white/5 flex items-start justify-between gap-1">
-                <div>
-                  <span className="font-semibold text-red-300 mr-1.5">{c.user}:</span>
-                  <span className="text-slate-200">{c.text}</span>
+              {status !== 'playing' && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center bg-black/80">
+                  {cover && <img src={cover} alt="" className="absolute inset-0 w-full h-full object-cover opacity-20 blur-sm" />}
+                  <div className="relative space-y-2">
+                    {status === 'connecting' && (
+                      <p className="text-sm text-slate-300 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Menghubungkan ke siaran...</p>
+                    )}
+                    {status === 'waiting' && <p className="text-sm text-slate-300">Menunggu video dari {talent.name}...</p>}
+                    {status === 'ended' && (
+                      <>
+                        <p className="text-sm text-slate-200 font-semibold">{talent.name} sedang tidak live.</p>
+                        <button
+                          onClick={() => onOpenDetail(talent)}
+                          className="px-4 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+                        >
+                          Lihat Profil
+                        </button>
+                      </>
+                    )}
+                    {status === 'error' && <p className="text-sm text-rose-300">{error}</p>}
+                  </div>
                 </div>
-                {c.gift && <span className="text-sm shrink-0">{c.gift}</span>}
-              </div>
-            ))}
+              )}
+
+              {status === 'playing' && (
+                <div className="absolute top-3 left-3 px-2.5 py-1 rounded-md bg-red-600 text-white text-xs font-bold flex items-center gap-1.5">
+                  <Radio className="w-3.5 h-3.5 animate-pulse" /> LIVE
+                </div>
+              )}
+
+              {status === 'playing' && needsAudioClick && (
+                <button
+                  onClick={() => roomRef.current?.startAudio()}
+                  className="absolute bottom-3 left-3 px-3 py-2 rounded-lg bg-black/80 border border-white/20 text-xs font-semibold text-white flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Volume2 className="w-4 h-4" /> Ketuk untuk nyalakan suara
+                </button>
+              )}
+
+              {/* Hati melayang */}
+              {hearts.map((h) => (
+                <Heart
+                  key={h.id}
+                  className="absolute bottom-4 w-6 h-6 text-rose-500 fill-rose-500 pointer-events-none animate-ping"
+                  style={{ left: `${h.left}%` }}
+                />
+              ))}
+
+              {status === 'playing' && (
+                <button
+                  onClick={sendHeart}
+                  className="absolute bottom-3 right-3 p-3 rounded-full bg-rose-600 hover:bg-rose-500 text-white shadow-lg cursor-pointer"
+                  title="Kirim hati"
+                >
+                  <Heart className="w-5 h-5 fill-white" />
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* Chat Input */}
-          <form onSubmit={handleSendChat} className="flex gap-2 pt-1 border-t border-white/5">
-            <input
-              type="text"
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              placeholder="Kirim pesan live..."
-              className="flex-1 px-3 py-2 rounded-lg bg-black/60 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500"
+          {/* Chat */}
+          <div className="border-t lg:border-t-0 lg:border-l border-white/10 flex flex-col min-h-[280px] lg:min-h-0">
+            <div className="px-3 py-2 border-b border-white/10 text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+              <UserIcon className="w-3.5 h-3.5" /> Live Chat
+            </div>
+            <LiveChat
+              messages={messages}
+              canChat={canChat}
+              disabled={status !== 'playing'}
+              onSend={sendChat}
+              onRequestLogin={onRequestLogin}
+              moderation={isModerator && status === 'playing' ? moderation : undefined}
             />
-            <button
-              type="submit"
-              className="p-2 rounded-lg bg-red-600 hover:bg-red-500 text-white transition-colors cursor-pointer"
-              title="Kirim Chat"
-            >
-              <Send className="w-3.5 h-3.5" />
-            </button>
-          </form>
+          </div>
         </div>
       </div>
     </div>

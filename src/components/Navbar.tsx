@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, User, LogOut, Menu, X, Radio, Send } from 'lucide-react';
+import { Shield, User, LogOut, Menu, X, Radio, Send, UserCog } from 'lucide-react';
 import { UserAccount, SiteSettings } from '../types/talent';
 
 interface NavbarProps {
@@ -8,6 +8,8 @@ interface NavbarProps {
   onLogout: () => void;
   onOpenAdmin: () => void;
   onOpenBroadcast: () => void;
+  onOpenProfile: () => void;
+  onOpenAccount: () => void;
   activeFilter: string;
   onSelectCategory: (cat: string) => void;
   liveCount: number;
@@ -20,6 +22,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onLogout,
   onOpenAdmin,
   onOpenBroadcast,
+  onOpenProfile,
+  onOpenAccount,
   activeFilter,
   onSelectCategory,
   liveCount,
@@ -113,6 +117,16 @@ export const Navbar: React.FC<NavbarProps> = ({
               {/* Jika Login sebagai Talent Host */}
               {currentUser.role === 'talent' && (
                 <button
+                  onClick={onOpenProfile}
+                  className="hidden sm:flex px-3.5 py-2 text-xs font-bold text-white bg-white/5 hover:bg-white/10 border border-white/15 rounded-xl transition-all items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                  title="Kelola profil, foto, dan status Anda"
+                >
+                  <UserCog className="w-3.5 h-3.5" />
+                  <span>Profil Saya</span>
+                </button>
+              )}
+              {currentUser.role === 'talent' && (
+                <button
                   onClick={onOpenBroadcast}
                   className="hidden sm:flex px-3.5 py-2 text-xs font-bold text-white bg-gradient-to-r from-red-600 to-rose-700 hover:brightness-110 border border-red-500 rounded-xl transition-all shadow-md shadow-red-600/30 items-center gap-1.5 whitespace-nowrap cursor-pointer"
                   title="Buka Studio Siaran Live Kamera Anda"
@@ -145,18 +159,25 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </>
               )}
 
-              <div className="hidden sm:flex flex-col text-right">
-                <span className="text-xs font-semibold text-slate-200 truncate max-w-[120px]">
-                  {currentUser.name}
+              <button
+                onClick={onOpenAccount}
+                className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white/5 cursor-pointer"
+                title="Akun Saya"
+              >
+                <span className="hidden sm:flex flex-col text-right">
+                  <span className="text-xs font-semibold text-slate-200 truncate max-w-[120px]">
+                    {currentUser.name}
+                  </span>
+                  <span className="text-[10px] text-red-400 uppercase tracking-wider font-mono">
+                    {currentUser.role === 'admin'
+                      ? 'Admin Official'
+                      : currentUser.role === 'talent'
+                      ? 'Talent Host'
+                      : 'VIP Member'}
+                  </span>
                 </span>
-                <span className="text-[10px] text-red-400 uppercase tracking-wider font-mono">
-                  {currentUser.role === 'admin'
-                    ? 'Admin Official'
-                    : currentUser.role === 'talent'
-                    ? 'Talent Host'
-                    : 'VIP Member'}
-                </span>
-              </div>
+                <User className="w-4 h-4 text-slate-300 sm:hidden" />
+              </button>
 
               <button
                 onClick={onLogout}
@@ -205,6 +226,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                 Studio Live Saya (Kamera & Chat)
               </span>
               <span className="text-[11px] bg-black/40 text-red-200 px-2 py-0.5 rounded-full font-mono">Talent Host</span>
+            </button>
+          )}
+
+          {currentUser?.role === 'talent' && (
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false);
+                onOpenProfile();
+              }}
+              className="w-full text-left py-2.5 px-3 rounded-xl bg-white/5 border border-white/15 text-sm text-white font-bold flex items-center gap-2 cursor-pointer"
+            >
+              <UserCog className="w-4 h-4" />
+              Profil Saya (Edit, Foto, Sembunyikan)
             </button>
           )}
 
