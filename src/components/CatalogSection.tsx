@@ -87,34 +87,36 @@ export const CatalogSection: React.FC<CatalogSectionProps> = ({
           </div>
 
           {/* Controls: Live Toggle & Sort Dropdown */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="grid grid-cols-2 md:flex items-center gap-2 md:flex-wrap">
             <button
               onClick={() => setOnlyLive(!onlyLive)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-medium border flex items-center gap-2 transition-all cursor-pointer ${
+              className={`h-11 md:h-auto px-3 md:px-3.5 py-2 rounded-xl text-sm md:text-xs font-medium border flex items-center justify-center gap-2 transition-all cursor-pointer ${
                 onlyLive
                   ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 shadow-md shadow-rose-900/30'
                   : 'bg-black/40 text-slate-300 border-white/10 hover:text-white'
               }`}
             >
               <Radio className={`w-3.5 h-3.5 ${onlyLive ? 'text-rose-400 animate-pulse' : 'text-slate-400'}`} />
-              <span>Hanya Sedang Live</span>
+              <span className="md:hidden">Sedang Live</span>
+              <span className="hidden md:inline">Hanya Sedang Live</span>
             </button>
 
             {/* Sort Dropdown */}
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
-              className="px-3 py-2 rounded-xl bg-black/60 border border-white/10 text-xs text-slate-200 focus:outline-none focus:border-red-500 cursor-pointer"
+              aria-label="Urutkan talent"
+              className="h-11 md:h-auto min-w-0 px-3 py-2 rounded-xl bg-black/60 border border-white/10 text-sm md:text-xs text-slate-200 focus:outline-none focus:border-red-500 cursor-pointer"
             >
-              <option value="rating">Rating Tertinggi</option>
-              <option value="likes">Paling Disukai</option>
-              <option value="name">Nama (A-Z)</option>
+              <option value="rating">Rating Terbaik</option>
+              <option value="likes">Terpopuler</option>
+              <option value="name">Nama A-Z</option>
             </select>
 
             {(onlyLive || searchQuery.trim() || sortBy !== 'rating') && (
               <button
                 onClick={handleResetFilters}
-                className="text-xs text-slate-400 hover:text-red-400 flex items-center gap-1.5 transition-colors px-2 py-1.5 cursor-pointer"
+                className="col-span-2 md:col-span-1 text-xs text-slate-400 hover:text-red-400 flex items-center justify-center gap-1.5 transition-colors px-2 py-1.5 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Reset</span>
@@ -146,7 +148,7 @@ export const CatalogSection: React.FC<CatalogSectionProps> = ({
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6 lg:gap-8">
           {filteredTalents.map((talent) => (
             <TalentCard
               key={talent.id}

@@ -266,10 +266,10 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/95 backdrop-blur-md overflow-y-auto">
-      <div className="relative w-full max-w-5xl bg-[#090A10] border border-red-500/40 rounded-2xl shadow-2xl overflow-hidden my-auto flex flex-col max-h-[96vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/95 backdrop-blur-md overflow-y-auto">
+      <div className="relative w-full max-w-5xl bg-[#090A10] sm:border border-red-500/40 sm:rounded-2xl shadow-2xl overflow-hidden sm:my-auto flex flex-col h-[100dvh] sm:h-auto sm:max-h-[96vh]">
         {/* Header */}
-        <div className="px-4 sm:px-6 py-3 border-b border-white/10 flex items-center justify-between gap-3">
+        <div className="px-3 sm:px-6 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:pt-3 border-b border-white/10 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
             <Radio className={`w-5 h-5 shrink-0 ${isLive ? 'text-red-500 animate-pulse' : 'text-slate-500'}`} />
             <h3 className="font-display font-bold text-white truncate">
@@ -287,7 +287,7 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
           </button>
         </div>
 
-        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3">
+        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 overflow-y-auto overscroll-contain lg:overflow-visible">
           {/* Kamera */}
           <div className="lg:col-span-2 p-3 sm:p-4 space-y-3">
             <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/10">

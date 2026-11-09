@@ -73,7 +73,7 @@ export const InstallPrompt: React.FC<{ brandName: string }> = ({ brandName }) =>
   if (hidden || (!deferred && !showIos)) return null;
 
   return (
-    <div className="fixed bottom-4 inset-x-4 sm:left-auto sm:right-4 sm:w-96 z-40 p-4 rounded-2xl bg-[#0C0E14]/95 border border-red-500/40 shadow-2xl backdrop-blur-md flex items-start gap-3">
+    <div className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] inset-x-4 sm:left-auto sm:right-4 sm:w-96 z-40 p-4 rounded-2xl bg-[#0C0E14]/95 border border-red-500/40 shadow-2xl backdrop-blur-md flex items-start gap-3">
       <img src="/icons/apple-touch-icon.png" alt="" className="w-11 h-11 rounded-xl shrink-0" />
       <div className="flex-1 min-w-0 text-xs">
         <div className="font-bold text-white text-sm">Install aplikasi {brandName}</div>

@@ -116,36 +116,40 @@ export const TalentDetailModal: React.FC<TalentDetailModalProps> = ({
   const talentReviews = reviews.filter((r) => r.talentId === talent.id);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md overflow-y-auto">
-      <div 
-        className="relative w-full max-w-5xl bg-[#0C0E14] border border-amber-500/20 rounded-2xl shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col"
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md overflow-y-auto">
+      <div
+        className="relative w-full max-w-5xl bg-[#0C0E14] sm:border border-amber-500/20 sm:rounded-2xl shadow-2xl overflow-hidden sm:my-auto h-[100dvh] sm:h-auto sm:max-h-[92vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Top Header Bar */}
-        <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between bg-[#090A10]/90">
-          <div className="flex items-center gap-3">
-            <h2 className="font-display text-xl font-bold text-white flex items-center gap-2">
-              <span>{talent.name}</span>
-              <span className="text-sm font-normal text-slate-400 font-sans">({talent.alias})</span>
+        <div className="px-4 sm:px-6 py-3 sm:py-4 pt-[max(0.75rem,env(safe-area-inset-top))] sm:pt-4 border-b border-white/10 flex items-center justify-between gap-2 bg-[#090A10]/90">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <h2 className="font-display text-lg sm:text-xl font-bold text-white flex items-center gap-2 min-w-0">
+              <span className="truncate">{talent.name}</span>
+              <span className="hidden sm:inline text-sm font-normal text-slate-400 font-sans truncate">({talent.alias})</span>
             </h2>
             {talent.verified && (
-              <span className="text-xs text-amber-400 font-medium flex items-center gap-1 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+              <span
+                className="text-xs text-amber-400 font-medium flex items-center gap-1 bg-amber-500/10 px-1.5 sm:px-2 py-0.5 rounded border border-amber-500/20 shrink-0"
+                title="Terverifikasi"
+              >
                 <ShieldCheck className="w-3.5 h-3.5" />
-                Terverifikasi
+                <span className="hidden sm:inline">Terverifikasi</span>
               </span>
             )}
             {talent.isLive && (
               <button
                 onClick={() => onOpenLive && onOpenLive(talent)}
-                className="text-xs text-rose-300 font-medium flex items-center gap-1 bg-rose-500/20 px-2.5 py-0.5 rounded-full border border-rose-500/40 hover:bg-rose-500/30 transition-colors cursor-pointer"
+                className="text-xs text-rose-300 font-medium flex items-center gap-1 bg-rose-500/20 px-2 sm:px-2.5 py-0.5 rounded-full border border-rose-500/40 hover:bg-rose-500/30 transition-colors cursor-pointer shrink-0"
               >
                 <Radio className="w-3 h-3 text-rose-400 animate-pulse" />
-                <span>Live Sekarang</span>
+                <span className="sm:hidden">Live</span>
+                <span className="hidden sm:inline">Live Sekarang</span>
               </button>
             )}
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={() => onReport({ targetType: 'talent', talentId: talent.id, label: `Profil ${talent.name}` })}
               className="px-2.5 py-1.5 text-xs text-slate-400 hover:text-rose-300 rounded-lg hover:bg-white/10 transition-colors flex items-center gap-1.5 cursor-pointer"
@@ -165,9 +169,9 @@ export const TalentDetailModal: React.FC<TalentDetailModalProps> = ({
         </div>
 
         {/* Modal Scrollable Body */}
-        <div className="overflow-y-auto flex-1 p-4 sm:p-6 lg:p-8 space-y-8">
+        <div className="overflow-y-auto overscroll-contain flex-1 p-3 sm:p-6 lg:p-8 pb-[max(1rem,env(safe-area-inset-bottom))] space-y-6 sm:space-y-8">
           {/* Top Split: Media Slider (Left) & Essential Specs + Telegram (Right) */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-8 items-start">
             {/* Left Column: Media Slider & Reel Viewer (7 cols on lg) */}
             <div className="lg:col-span-7 flex flex-col space-y-3">
               {/* Active Media Container with 4:5 aspect ratio */}
@@ -468,9 +472,9 @@ export const TalentDetailModal: React.FC<TalentDetailModalProps> = ({
               </h4>
 
               {/* Star selector */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400 mr-2">Pilih Rating:</span>
-                <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 sm:gap-2">
+                <span className="hidden sm:inline text-xs text-slate-400 mr-2">Pilih Rating:</span>
+                <div className="flex items-center gap-0.5 sm:gap-1">
                   {[1, 2, 3, 4, 5].map((num) => (
                     <button
                       type="button"
@@ -490,7 +494,7 @@ export const TalentDetailModal: React.FC<TalentDetailModalProps> = ({
                     </button>
                   ))}
                 </div>
-                <span className="text-xs font-mono font-bold text-amber-400 ml-2">
+                <span className="text-xs font-mono font-bold text-amber-400 ml-2 whitespace-nowrap">
                   {newRating} Bintang
                 </span>
               </div>

@@ -24,7 +24,7 @@ export const PushOptInBanner: React.FC<{ talentName: string; onClose: () => void
   };
 
   return (
-    <div className="fixed bottom-4 inset-x-4 sm:left-auto sm:right-4 sm:w-96 z-[55] p-4 rounded-2xl bg-[#0C0E14]/95 border border-red-500/40 shadow-2xl backdrop-blur-md space-y-3">
+    <div className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] inset-x-4 sm:left-auto sm:right-4 sm:w-96 z-[55] p-4 rounded-2xl bg-[#0C0E14]/95 border border-red-500/40 shadow-2xl backdrop-blur-md space-y-3">
       <div className="flex items-start gap-3">
         <div className="w-9 h-9 rounded-xl bg-red-500/15 border border-red-500/30 flex items-center justify-center shrink-0">
           <Bell className="w-4 h-4 text-red-400" />

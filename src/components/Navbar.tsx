@@ -40,16 +40,16 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-[#07080D]/95 backdrop-blur-md border-b border-red-500/20 transition-all shadow-xl shadow-black/50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between gap-8">
+    <header className="sticky top-0 z-40 bg-[#07080D]/95 backdrop-blur-md border-b border-red-500/20 transition-all shadow-xl shadow-black/50 pt-[env(safe-area-inset-top)]">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-2 sm:gap-8">
         {/* Zone 1: Brand Wordmark with Reference Logo */}
-        <a 
-          href="#top" 
+        <a
+          href="#top"
           onClick={(e) => { e.preventDefault(); scrollToSection('top'); }}
-          className="flex items-center gap-3 group whitespace-nowrap shrink-0 text-decoration-none"
+          className="flex items-center gap-2 sm:gap-3 group whitespace-nowrap min-w-0 text-decoration-none"
         >
           {/* Custom Logo Image provided by user */}
-          <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-red-500/60 shadow-lg shadow-red-600/30 group-hover:scale-105 transition-transform bg-black shrink-0">
+          <div className="relative w-10 h-10 sm:w-12 sm:h-12 rounded-full overflow-hidden border-2 border-red-500/60 shadow-lg shadow-red-600/30 group-hover:scale-105 transition-transform bg-black shrink-0">
             <img
               src={siteSettings.logoUrl}
               alt={siteSettings.brandName}
@@ -58,11 +58,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             />
           </div>
           
-          <div className="flex flex-col">
-            <span className="font-display font-extrabold text-2xl tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-100 to-red-500 drop-shadow-sm">
+          <div className="flex flex-col min-w-0">
+            <span className="font-display font-extrabold text-xl sm:text-2xl tracking-wider sm:tracking-widest truncate text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-100 to-red-500 drop-shadow-sm">
               {siteSettings.brandName}
             </span>
-            <span className="text-[10px] tracking-widest text-red-400/90 uppercase font-semibold -mt-0.5">
+            <span className="hidden sm:block text-[10px] tracking-widest text-red-400/90 uppercase font-semibold -mt-0.5">
               {siteSettings.brandTagline}
             </span>
           </div>
@@ -111,7 +111,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </nav>
 
         {/* Zone 3: 1 Primary Action Area */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           {currentUser ? (
             <div className="flex items-center gap-2">
               {/* Jika Login sebagai Talent Host */}
@@ -150,11 +150,12 @@ export const Navbar: React.FC<NavbarProps> = ({
 
                   <button
                     onClick={onOpenAdmin}
-                    className="px-3.5 py-2 text-xs font-bold text-white bg-gradient-to-r from-red-600 to-rose-700 hover:brightness-110 rounded-xl transition-all shadow-md shadow-red-600/30 flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                    className="p-2.5 sm:px-3.5 sm:py-2 text-xs font-bold text-white bg-gradient-to-r from-red-600 to-rose-700 hover:brightness-110 rounded-xl transition-all shadow-md shadow-red-600/30 flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
                     title="Buka Admin Studio Kelola Semua Data & Telegram"
+                    aria-label="Admin Studio"
                   >
                     <Shield className="w-3.5 h-3.5 text-white" />
-                    <span>Admin Studio</span>
+                    <span className="hidden sm:inline">Admin Studio</span>
                   </button>
                 </>
               )}
@@ -191,10 +192,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="flex items-center gap-2">
               <button
                 onClick={onOpenAuth}
-                className="px-4 py-2 text-xs font-semibold text-slate-200 bg-white/5 hover:bg-white/10 border border-red-500/30 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                aria-label="Masuk / Daftar"
+                className="px-3 sm:px-4 py-2 text-xs font-semibold text-slate-200 bg-white/5 hover:bg-white/10 border border-red-500/30 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
               >
                 <User className="w-3.5 h-3.5 text-red-400" />
-                <span>Masuk / Daftar</span>
+                <span className="sm:hidden">Masuk</span>
+                <span className="hidden sm:inline">Masuk / Daftar</span>
               </button>
             </div>
           )}
@@ -202,7 +205,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Mobile menu toggle */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 text-slate-400 hover:text-white rounded-lg hover:bg-white/5 cursor-pointer"
+            className="md:hidden p-2 -mr-1 text-slate-400 hover:text-white rounded-lg hover:bg-white/5 cursor-pointer"
             aria-label="Toggle menu"
           >
             {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}

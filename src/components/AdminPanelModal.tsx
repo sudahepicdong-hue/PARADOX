@@ -299,7 +299,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-black/90 backdrop-blur-md overflow-y-auto">
       <div 
-        className="relative w-full max-w-5xl bg-[#090A10] border border-red-500/30 rounded-2xl shadow-2xl p-6 sm:p-8 space-y-6 max-h-[92vh] flex flex-col"
+        className="relative w-full max-w-5xl bg-[#090A10] border border-red-500/30 rounded-2xl shadow-2xl p-4 sm:p-8 space-y-4 sm:space-y-6 max-h-[94dvh] sm:max-h-[92vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

@@ -412,7 +412,7 @@ export default function App() {
     <div className="min-h-screen bg-[#07080D] text-slate-100 flex flex-col font-sans selection:bg-red-500/30 selection:text-red-200">
       {/* Toast Notification */}
       {liveToastMessage && (
-        <div className="fixed top-24 right-4 z-50 max-w-sm p-4 rounded-2xl bg-black/90 border border-red-500/80 text-white shadow-2xl flex items-center gap-3 backdrop-blur-md animate-fade-in">
+        <div className="fixed top-20 sm:top-24 left-4 right-4 sm:left-auto z-50 sm:max-w-sm p-4 rounded-2xl bg-black/90 border border-red-500/80 text-white shadow-2xl flex items-center gap-3 backdrop-blur-md animate-fade-in">
           <Radio className="w-5 h-5 text-red-500 animate-pulse shrink-0" />
           <span className="text-xs font-semibold">{liveToastMessage}</span>
         </div>

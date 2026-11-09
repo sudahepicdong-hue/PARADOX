@@ -90,7 +90,7 @@ export const LiveChat: React.FC<LiveChatProps> = ({ messages, canChat, disabled,
       </div>
 
       {canChat ? (
-        <form onSubmit={submit} className="p-2 border-t border-white/10 space-y-1">
+        <form onSubmit={submit} className="p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] border-t border-white/10 space-y-1">
           <div className="flex gap-2">
             <input
               value={text}

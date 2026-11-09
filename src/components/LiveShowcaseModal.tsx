@@ -215,10 +215,10 @@ export const LiveShowcaseModal: React.FC<LiveShowcaseModalProps> = ({
   const cover = talent.media.find((m) => m.type === 'image')?.url;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/95 backdrop-blur-md overflow-y-auto">
-      <div className="relative w-full max-w-5xl bg-[#090A10] border border-red-500/40 rounded-2xl shadow-2xl overflow-hidden my-auto flex flex-col max-h-[96vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/95 backdrop-blur-md overflow-y-auto">
+      <div className="relative w-full max-w-5xl bg-[#090A10] sm:border border-red-500/40 sm:rounded-2xl shadow-2xl overflow-hidden sm:my-auto flex flex-col h-[100dvh] sm:h-auto sm:max-h-[96vh]">
         {/* Header */}
-        <div className="px-4 sm:px-6 py-3 border-b border-white/10 flex items-center justify-between gap-3">
+        <div className="px-3 sm:px-6 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:pt-3 border-b border-white/10 flex items-center justify-between gap-3">
           <button onClick={() => onOpenDetail(talent)} className="flex items-center gap-3 min-w-0 text-left cursor-pointer group">
             <img src={cover} alt={talent.name} className="w-9 h-9 rounded-full object-cover border border-red-500/50 shrink-0" />
             <div className="min-w-0">
@@ -245,7 +245,7 @@ export const LiveShowcaseModal: React.FC<LiveShowcaseModalProps> = ({
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3">
+        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 overflow-y-auto overscroll-contain lg:overflow-visible">
           {/* Video */}
           <div className="lg:col-span-2 p-3 sm:p-4">
             <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/10">

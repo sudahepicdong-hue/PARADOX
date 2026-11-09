@@ -9,6 +9,26 @@
   h1, h2, h3, h4, .font-display {
     font-family: 'Outfit', sans-serif;
   }
+
+  html {
+    /* Jangan biarkan HP memperbesar teks sendiri saat layar diputar */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    /* Ketukan di HP tidak memunculkan kotak abu-abu */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* iPhone otomatis zoom kalau huruf di kolom isian < 16px. Di layar kecil kita pakai 16px. */
+  @media (max-width: 639px) {
+    input:not([type='checkbox']):not([type='radio']):not([type='file']),
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
 }
 
 /* Custom scrollbar for sleek luxury dark aesthetic */
