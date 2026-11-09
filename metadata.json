@@ -1,0 +1,6 @@
+{
+  "name": "Clubsnight VIP - Exclusive Talent Catalog & Telegram Booking",
+  "description": "Landing page dan katalog talent eksklusif dengan koneksi langsung ke Telegram, status Live, slider multi-media foto/video, spesifikasi fisik lengkap, rating, dan review.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
