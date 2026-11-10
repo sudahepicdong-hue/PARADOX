@@ -6,14 +6,12 @@ import {
   LocalVideoTrack,
   LocalAudioTrack,
   Track,
-  createLocalTracks,
-  VideoPresets,
   RemoteParticipant
 } from 'livekit-client';
 import { X, Mic, MicOff, Video, VideoOff, Radio, Users, Heart, AlertCircle, Loader2 } from 'lucide-react';
 import { Talent } from '../types/talent';
 import { getLiveToken, sendLiveHeartbeat, moderateLive, recordLiveViewers } from '../lib/db';
-import { useVideoAspect, videoBoxStyle, isPortraitPhone } from '../lib/useVideoAspect';
+import { useVideoAspect, videoBoxStyle, isPortraitPhone, openCameraAndMic } from '../lib/useVideoAspect';
 import {
   ChatMessage,
   appendMessage,
@@ -75,11 +73,8 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
   // 1. Nyalakan preview kamera saat studio dibuka
   useEffect(() => {
     let cancelled = false;
-    createLocalTracks({ audio: true, video: {
-        facingMode: 'user',
-        // HP tegak: minta kamera tegak (720x1280) supaya wajah tidak terpotong
-        resolution: isPortraitPhone() ? { width: 720, height: 1280, aspectRatio: 9 / 16 } : VideoPresets.h720.resolution
-      } })
+    openCameraAndMic()
+      .then(({ audio, video }) => [new LocalAudioTrack(audio, undefined, true), new LocalVideoTrack(video, undefined, true)] as LocalTrack[])
       .then((tracks) => {
         if (cancelled) {
           tracks.forEach((t) => t.stop());
@@ -165,7 +160,9 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
       await room.connect(url, token);
       roomRef.current = room;
       for (const track of tracksRef.current) {
-        await room.localParticipant.publishTrack(track);
+        await room.localParticipant.publishTrack(track, {
+          source: track.kind === Track.Kind.Video ? Track.Source.Camera : Track.Source.Microphone
+        });
       }
 
       await onStartLive(selectedTalent.id, title.trim() || 'Live');

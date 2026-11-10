@@ -31,3 +31,41 @@ export const isPortraitPhone = () =>
   typeof window !== 'undefined' &&
   window.matchMedia('(orientation: portrait)').matches &&
   window.matchMedia('(pointer: coarse)').matches;
+
+// Buka kamera depan + mikrofon. Di HP tegak, coba beberapa pengaturan sampai gambarnya benar-benar tegak,
+// karena tiap HP/browser (Samsung, iPhone, browser bawaan Telegram) menanggapi permintaan ukuran berbeda-beda.
+export async function openCameraAndMic(): Promise<{ audio: MediaStreamTrack; video: MediaStreamTrack }> {
+  const md = navigator.mediaDevices;
+  const portrait = isPortraitPhone();
+  const tries: MediaTrackConstraints[] = portrait
+    ? [
+        { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 1280 } },
+        { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, // sebagian Android membalik ukurannya
+        { facingMode: 'user' },
+        { facingMode: 'user', aspectRatio: { exact: 9 / 16 }, height: { ideal: 1280 } } // terakhir: potong jadi tegak
+      ]
+    : [{ facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }];
+
+  const isTall = (t: MediaStreamTrack) => {
+    const { width, height } = t.getSettings();
+    return !width || !height || height > width;
+  };
+
+  // Percobaan pertama sekalian minta izin mikrofon
+  const first = await md.getUserMedia({ audio: true, video: tries[0] });
+  const audio = first.getAudioTracks()[0];
+  let video = first.getVideoTracks()[0];
+  if (!portrait || isTall(video)) return { audio, video };
+
+  for (const c of tries.slice(1)) {
+    video.stop();
+    try {
+      video = (await md.getUserMedia({ video: c })).getVideoTracks()[0];
+      if (isTall(video)) return { audio, video };
+    } catch {
+      // pengaturan ini tidak didukung, lanjut ke berikutnya
+      video = (await md.getUserMedia({ video: { facingMode: 'user' } })).getVideoTracks()[0];
+    }
+  }
+  return { audio, video };
+}
