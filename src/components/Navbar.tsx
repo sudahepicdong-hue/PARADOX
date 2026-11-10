@@ -30,6 +30,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   siteSettings
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // Admin & talent punya lebih banyak tombol, jadi beberapa menu disembunyikan lebih awal
+  const isStaff = currentUser?.role === 'admin' || currentUser?.role === 'talent';
 
   const scrollToSection = (id: string) => {
     setMobileMenuOpen(false);
@@ -46,7 +48,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         <a
           href="#top"
           onClick={(e) => { e.preventDefault(); scrollToSection('top'); }}
-          className="flex items-center gap-2 sm:gap-3 group whitespace-nowrap min-w-0 text-decoration-none"
+          className="flex items-center gap-2 sm:gap-3 group whitespace-nowrap min-w-0 md:shrink-0 text-decoration-none"
         >
           {/* Custom Logo Image provided by user */}
           <div className="relative w-10 h-10 sm:w-12 sm:h-12 rounded-full overflow-hidden border-2 border-red-500/60 shadow-lg shadow-red-600/30 group-hover:scale-105 transition-transform bg-black shrink-0">
@@ -69,7 +71,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </a>
 
         {/* Zone 2: Single-line nav links (4-5 items) */}
-        <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-300">
+        <nav className="hidden md:flex items-center gap-4 lg:gap-6 xl:gap-8 min-w-0 text-sm font-medium text-slate-300">
           <a
             href="#katalog"
             onClick={(e) => { e.preventDefault(); scrollToSection('katalog'); }}
@@ -84,7 +86,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               onSelectCategory('live');
               scrollToSection('katalog');
             }}
-            className="flex items-center gap-2 hover:text-rose-400 transition-colors whitespace-nowrap shrink-0 text-slate-300 cursor-pointer"
+            className="hidden lg:flex items-center gap-2 hover:text-rose-400 transition-colors whitespace-nowrap shrink-0 text-slate-300 cursor-pointer"
           >
             <Radio className="w-4 h-4 text-rose-500 animate-pulse" />
             <span>Live Stream</span>
@@ -95,7 +97,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <a
             href="#booking-guide"
             onClick={(e) => { e.preventDefault(); scrollToSection('booking-guide'); }}
-            className="transition-colors whitespace-nowrap shrink-0 hover:text-red-300"
+            className={`${isStaff ? 'hidden xl:inline' : 'hidden lg:inline'} transition-colors whitespace-nowrap shrink-0 hover:text-red-300`}
           >
             Panduan Telegram
           </a>
@@ -103,7 +105,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             href={siteSettings.officialTelegramUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="transition-colors whitespace-nowrap shrink-0 text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5"
+            className={`${isStaff ? 'hidden' : 'hidden xl:flex'} transition-colors whitespace-nowrap shrink-0 text-cyan-400 hover:text-cyan-300 items-center gap-1.5`}
           >
             <Send className="w-3.5 h-3.5" />
             <span>CS Official (@{siteSettings.officialTelegramUsername})</span>
@@ -118,21 +120,21 @@ export const Navbar: React.FC<NavbarProps> = ({
               {currentUser.role === 'talent' && (
                 <button
                   onClick={onOpenProfile}
-                  className="hidden sm:flex px-3.5 py-2 text-xs font-bold text-white bg-white/5 hover:bg-white/10 border border-white/15 rounded-xl transition-all items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                  className="hidden sm:flex p-2.5 xl:px-3.5 xl:py-2 text-xs font-bold text-white bg-white/5 hover:bg-white/10 border border-white/15 rounded-xl transition-all items-center gap-1.5 whitespace-nowrap cursor-pointer"
                   title="Kelola profil, foto, dan status Anda"
                 >
                   <UserCog className="w-3.5 h-3.5" />
-                  <span>Profil Saya</span>
+                  <span className="hidden xl:inline">Profil Saya</span>
                 </button>
               )}
               {currentUser.role === 'talent' && (
                 <button
                   onClick={onOpenBroadcast}
-                  className="hidden sm:flex px-3.5 py-2 text-xs font-bold text-white bg-gradient-to-r from-red-600 to-rose-700 hover:brightness-110 border border-red-500 rounded-xl transition-all shadow-md shadow-red-600/30 items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                  className="hidden sm:flex p-2.5 xl:px-3.5 xl:py-2 text-xs font-bold text-white bg-gradient-to-r from-red-600 to-rose-700 hover:brightness-110 border border-red-500 rounded-xl transition-all shadow-md shadow-red-600/30 items-center gap-1.5 whitespace-nowrap cursor-pointer"
                   title="Buka Studio Siaran Live Kamera Anda"
                 >
                   <Radio className="w-3.5 h-3.5 text-white animate-pulse" />
-                  <span>Studio Live Saya</span>
+                  <span className="hidden xl:inline">Studio Live Saya</span>
                 </button>
               )}
 
@@ -141,21 +143,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <>
                   <button
                     onClick={onOpenBroadcast}
-                    className="hidden sm:flex px-3.5 py-2 text-xs font-bold text-white bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 rounded-xl transition-all shadow-sm items-center gap-1.5 whitespace-nowrap cursor-pointer hover:border-red-400"
+                    className="hidden sm:flex p-2.5 xl:px-3.5 xl:py-2 text-xs font-bold text-white bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 rounded-xl transition-all shadow-sm items-center gap-1.5 whitespace-nowrap cursor-pointer hover:border-red-400"
                     title="Buka Studio Siaran Langsung (Khusus Admin/Talent)"
                   >
                     <Radio className="w-3.5 h-3.5 text-red-500 animate-pulse" />
-                    <span>Go Live Studio</span>
+                    <span className="hidden xl:inline">Go Live Studio</span>
                   </button>
 
                   <button
                     onClick={onOpenAdmin}
-                    className="p-2.5 sm:px-3.5 sm:py-2 text-xs font-bold text-white bg-gradient-to-r from-red-600 to-rose-700 hover:brightness-110 rounded-xl transition-all shadow-md shadow-red-600/30 flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                    className="p-2.5 xl:px-3.5 xl:py-2 text-xs font-bold text-white bg-gradient-to-r from-red-600 to-rose-700 hover:brightness-110 rounded-xl transition-all shadow-md shadow-red-600/30 flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
                     title="Buka Admin Studio Kelola Semua Data & Telegram"
                     aria-label="Admin Studio"
                   >
                     <Shield className="w-3.5 h-3.5 text-white" />
-                    <span className="hidden sm:inline">Admin Studio</span>
+                    <span className="hidden xl:inline">Admin Studio</span>
                   </button>
                 </>
               )}
@@ -165,7 +167,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white/5 cursor-pointer"
                 title="Akun Saya"
               >
-                <span className="hidden sm:flex flex-col text-right">
+                <span className="hidden xl:flex flex-col text-right">
                   <span className="text-xs font-semibold text-slate-200 truncate max-w-[120px]">
                     {currentUser.name}
                   </span>
@@ -177,7 +179,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       : 'VIP Member'}
                   </span>
                 </span>
-                <User className="w-4 h-4 text-slate-300 sm:hidden" />
+                <User className="w-4 h-4 text-slate-300 xl:hidden" />
               </button>
 
               <button
