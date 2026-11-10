@@ -24,14 +24,7 @@ import type { ReportTarget } from './ReportModal';
 import type { LiveSchedule } from '../lib/db';
 import { scheduleFormat } from './LiveScheduleManager';
 
-// Pilihan topik chat ke Telegram talent. "message" = kalimat yang otomatis terisi di chat.
-const BOOKING_TOPICS = [
-  { id: 'vcs', label: 'Video Call S', message: 'memesan Video Call S' },
-  { id: 'konten', label: 'Konten VVIP', message: 'menanyakan Konten VVIP' },
-  { id: 'call', label: 'Call S', message: 'memesan Call S' },
-  { id: 'alur', label: 'CS Alur', message: 'menanyakan alur / cara pemesanan' }
-] as const;
-type BookingTopicId = (typeof BOOKING_TOPICS)[number]['id'];
+import { bookingTopicsFor, knownServices } from '../lib/services';
 
 interface TalentDetailModalProps {
   talent: Talent;
@@ -75,12 +68,14 @@ export const TalentDetailModal: React.FC<TalentDetailModalProps> = ({
   const [isReviewSaving, setIsReviewSaving] = useState(false);
 
   // Selected booking preset message for Telegram
-  const [selectedTopic, setSelectedTopic] = useState<BookingTopicId>(BOOKING_TOPICS[0].id);
+  // Topik chat = layanan yang dicentang talent ini + CS Alur
+  const bookingTopics = bookingTopicsFor(talent.services);
+  const [selectedTopic, setSelectedTopic] = useState<string>(bookingTopics[0].label);
 
   const currentMedia = talent.media[activeMediaIndex] || talent.media[0];
 
   const getCustomTelegramUrl = () => {
-    const topicText = (BOOKING_TOPICS.find((t) => t.id === selectedTopic) ?? BOOKING_TOPICS[0]).message;
+    const topicText = (bookingTopics.find((t) => t.label === selectedTopic) ?? bookingTopics[0]).message;
 
     const message = encodeURIComponent(
       `Halo ${talent.name} (@${talent.telegramUsername}), saya melihat profil dan katalog Anda di ${brandName}.\n\nSaya ingin ${topicText}. Apakah bisa dibantu?`
@@ -356,12 +351,12 @@ export const TalentDetailModal: React.FC<TalentDetailModalProps> = ({
                 <div className="space-y-1.5">
                   <label className="text-[11px] text-slate-300 font-medium">Pilih Topik Chat / Booking:</label>
                   <div className="grid grid-cols-2 gap-1.5 text-xs">
-                    {BOOKING_TOPICS.map((t) => (
+                    {bookingTopics.map((t) => (
                       <button
-                        key={t.id}
-                        onClick={() => setSelectedTopic(t.id)}
+                        key={t.label}
+                        onClick={() => setSelectedTopic(t.label)}
                         className={`p-2 rounded-lg text-left transition-colors border ${
-                          selectedTopic === t.id
+                          selectedTopic === t.label
                             ? 'bg-amber-400/20 border-amber-400/50 text-amber-200'
                             : 'bg-white/5 border-white/5 text-slate-400 hover:text-slate-200'
                         }`}
@@ -389,16 +384,18 @@ export const TalentDetailModal: React.FC<TalentDetailModalProps> = ({
                 <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Tentang Talent</h4>
                 <p className="text-sm text-slate-300 leading-relaxed">{talent.bio}</p>
 
-                <div className="pt-2">
-                  <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Layanan Favorit</h4>
-                  <div className="flex flex-wrap gap-2 text-xs text-amber-200">
-                    {talent.services.map((srv, i) => (
-                      <span key={i} className="px-2.5 py-1 rounded bg-white/5 border border-white/10">
-                        {srv}
-                      </span>
-                    ))}
+                {knownServices(talent.services).length > 0 && (
+                  <div className="pt-2">
+                    <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Layanan</h4>
+                    <div className="flex flex-wrap gap-2 text-xs text-amber-200">
+                      {knownServices(talent.services).map((srv) => (
+                        <span key={srv} className="px-2.5 py-1 rounded bg-white/5 border border-white/10">
+                          {srv}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Jadwal live berikutnya */}
                 {schedules.length > 0 && (

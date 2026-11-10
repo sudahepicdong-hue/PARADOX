@@ -3,6 +3,8 @@ import { X, Save, Trash2, Upload, Eye, EyeOff, ShieldCheck, ShieldAlert } from '
 import { Talent, MediaItem } from '../types/talent';
 import { uploadMedia, isOnlineNow } from '../lib/db';
 import { TelegramStatusLink } from './TelegramStatusLink';
+import { ServicePicker } from './ServicePicker';
+import { knownServices } from '../lib/services';
 import { MyDocumentsSection } from './MyDocumentsSection';
 import { LiveScheduleManager } from './LiveScheduleManager';
 import { LiveBansList } from './LiveBansList';
@@ -28,10 +30,10 @@ export const TalentProfileModal: React.FC<TalentProfileModalProps> = ({ talent, 
     zodiac: talent.zodiac,
     bio: talent.bio,
     languages: talent.languages.join(', '),
-    services: talent.services.join(', '),
     liveStatusText: talent.liveStatusText ?? ''
   });
   const [media, setMedia] = useState<MediaItem[]>(talent.media);
+  const [services, setServices] = useState<string[]>(knownServices(talent.services));
   const [isActive, setIsActive] = useState(talent.isActive !== false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -92,7 +94,7 @@ export const TalentProfileModal: React.FC<TalentProfileModalProps> = ({ talent, 
         zodiac: form.zodiac.trim(),
         bio: form.bio.trim(),
         languages: splitList(form.languages),
-        services: splitList(form.services),
+        services,
         liveStatusText: form.liveStatusText.trim() || undefined,
         media,
         isActive
@@ -202,10 +204,12 @@ export const TalentProfileModal: React.FC<TalentProfileModalProps> = ({ talent, 
               <label className={labelClass}>Bahasa (pisahkan dengan koma)</label>
               <input value={form.languages} onChange={set('languages')} className={inputClass} />
             </div>
-            <div>
-              <label className={labelClass}>Layanan (pisahkan dengan koma)</label>
-              <input value={form.services} onChange={set('services')} className={inputClass} />
-            </div>
+          </div>
+
+          <div>
+            <label className={labelClass}>Layanan yang Anda sediakan</label>
+            <ServicePicker value={services} onChange={setServices} />
+            <p className="text-[11px] text-slate-400 mt-1">Hanya yang dicentang yang tampil di profil & pilihan chat pengunjung.</p>
           </div>
 
           <div>

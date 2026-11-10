@@ -1,3 +1,4 @@
+import { knownServices } from '../lib/services';
 import React from 'react';
 import { Talent } from '../types/talent';
 import { Heart, Star, Send, Radio, Video, Image as ImageIcon, CheckCircle2 } from 'lucide-react';
@@ -102,9 +103,9 @@ export const TalentCard: React.FC<TalentCardProps> = ({
       {/* Content & Services */}
       <div className="p-2.5 sm:p-4 flex-1 flex flex-col justify-between space-y-2.5 sm:space-y-4">
         {/* Services Badges (di HP disembunyikan supaya kartu ringkas; lengkap di halaman detail) */}
-        {talent.services && talent.services.length > 0 && (
+        {knownServices(talent.services).length > 0 && (
           <div className="hidden sm:flex flex-wrap gap-1.5">
-            {talent.services.slice(0, 3).map((srv, idx) => (
+            {knownServices(talent.services).slice(0, 3).map((srv, idx) => (
               <span
                 key={idx}
                 className="text-[11px] font-medium text-slate-300 bg-white/[0.04] border border-white/10 px-2 py-0.5 rounded-md"

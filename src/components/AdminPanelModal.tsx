@@ -4,6 +4,8 @@ import { TalentVerificationPanel } from './TalentVerificationPanel';
 import { ReportsPanel } from './ReportsPanel';
 import { AuditLogPanel } from './AuditLogPanel';
 import { AdminStatsPanel } from './AdminStatsPanel';
+import { ServicePicker } from './ServicePicker';
+import { knownServices } from '../lib/services';
 import {
   X,
   Plus,
@@ -162,7 +164,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       bio: '',
       zodiac: 'Scorpio',
       languages: ['Indonesia', 'English'],
-      services: ['VIP Dinner', 'Party Host'],
+      services: [],
       rates: {
         dinnerDate: 'Rp 2.500.000 / 3 Jam',
         vipParty: 'Rp 4.500.000 / Malam'
@@ -235,7 +237,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       bio: formData.bio || 'Talent VIP profesional.',
       zodiac: formData.zodiac || 'Scorpio',
       languages: formData.languages || ['Indonesia', 'English'],
-      services: formData.services || ['VIP Dinner', 'Party Mate'],
+      services: knownServices(formData.services),
       rates: formData.rates || { dinnerDate: 'Rp 2.500.000 / 3 Jam' },
       media: mediaList.length > 0 ? mediaList : [
         {
@@ -730,6 +732,18 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   >
                     {formData.isLive ? 'LIVE AKTIF' : 'OFFLINE'}
                   </button>
+                </div>
+
+                {/* Layanan talent (menentukan topik chat di profil) */}
+                <div className="space-y-1.5">
+                  <label className="text-xs text-slate-300 block font-semibold">Layanan yang disediakan talent ini</label>
+                  <ServicePicker
+                    value={knownServices(formData.services)}
+                    onChange={(services) => setFormData({ ...formData, services })}
+                  />
+                  <p className="text-[11px] text-slate-400">
+                    Hanya layanan yang dicentang yang tampil di profil & pilihan chat. "CS Alur" selalu tersedia.
+                  </p>
                 </div>
 
                 {/* Password login talent */}
