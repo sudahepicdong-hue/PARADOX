@@ -12,6 +12,7 @@ import { X, Mic, MicOff, Video, VideoOff, Radio, Users, Heart, AlertCircle, Load
 import { Talent } from '../types/talent';
 import { getLiveToken, sendLiveHeartbeat, moderateLive, recordLiveViewers } from '../lib/db';
 import { useVideoAspect, videoBoxStyle, isPortraitPhone, openCameraAndMic } from '../lib/useVideoAspect';
+import { VideoEffects, COLOR_FILTERS, FACE_MASKS, ColorFilter, FaceMask, MaskStatus } from '../lib/videoEffects';
 import {
   ChatMessage,
   appendMessage,
@@ -59,6 +60,11 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const peakRef = useRef(0);
+  const [filter, setFilter] = useState<ColorFilter>('none');
+  const [mask, setMask] = useState<FaceMask>('none');
+  const [maskStatus, setMaskStatus] = useState<MaskStatus>('idle');
+  const [effectsReady, setEffectsReady] = useState(false);
+  const effectsRef = useRef<VideoEffects | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoRatio = useVideoAspect(videoRef, isPortraitPhone() ? 9 / 16 : 16 / 9);
@@ -74,15 +80,27 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
   useEffect(() => {
     let cancelled = false;
     openCameraAndMic()
-      .then(({ audio, video }) => [new LocalAudioTrack(audio, undefined, true), new LocalVideoTrack(video, undefined, true)] as LocalTrack[])
-      .then((tracks) => {
+      .then(({ audio, video }) => {
         if (cancelled) {
-          tracks.forEach((t) => t.stop());
+          audio.stop();
+          video.stop();
           return;
         }
+        // Filter & topeng: kamera dilukis ulang ke kanvas. Kalau browser tidak mendukung, pakai kamera polos.
+        let output = video;
+        try {
+          const fx = new VideoEffects(video);
+          fx.onMaskStatus = setMaskStatus;
+          effectsRef.current = fx;
+          output = fx.track;
+          setEffectsReady(true);
+        } catch {
+          effectsRef.current = null;
+        }
+        const tracks: LocalTrack[] = [new LocalAudioTrack(audio, undefined, true), new LocalVideoTrack(output, undefined, true)];
         tracksRef.current = tracks;
-        const video = tracks.find((t) => t.kind === Track.Kind.Video);
-        if (video && videoRef.current) video.attach(videoRef.current);
+        const camTrack = tracks[1];
+        if (videoRef.current) camTrack.attach(videoRef.current);
       })
       .catch((e) => {
         setCameraError(
@@ -98,6 +116,7 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
       if (heartbeatRef.current) window.clearInterval(heartbeatRef.current);
       roomRef.current?.disconnect();
       tracksRef.current.forEach((t) => t.stop());
+      effectsRef.current?.stop();
       if (liveTalentRef.current) onStopLive(liveTalentRef.current).catch(() => {});
     };
   }, []);
@@ -217,6 +236,16 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
     setCamOn(!camOn);
   };
 
+  const chooseFilter = (f: ColorFilter) => {
+    setFilter(f);
+    if (effectsRef.current) effectsRef.current.filter = f;
+  };
+
+  const chooseMask = (m: FaceMask) => {
+    setMask(m);
+    effectsRef.current?.setMask(m);
+  };
+
   const toggleMic = async () => {
     const audio = tracksRef.current.find((t) => t.kind === Track.Kind.Audio) as LocalAudioTrack | undefined;
     if (!audio) return;
@@ -329,6 +358,45 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
                 </button>
               </div>
             </div>
+
+            {/* Filter & topeng (langsung terlihat oleh penonton, bisa diganti saat live) */}
+            {effectsReady && (
+              <div className="space-y-2 text-xs">
+                <div>
+                  <p className="text-slate-300 font-semibold mb-1.5">Filter</p>
+                  <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+                    {COLOR_FILTERS.map((f) => (
+                      <button
+                        key={f.id}
+                        onClick={() => chooseFilter(f.id)}
+                        className={`shrink-0 px-3 py-1.5 rounded-full border cursor-pointer ${filter === f.id ? 'bg-amber-500 border-amber-400 text-black font-semibold' : 'bg-black/60 border-white/10 text-slate-200 hover:bg-white/10'}`}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-slate-300 font-semibold mb-1.5">
+                    Topeng
+                    {mask !== 'none' && maskStatus === 'loading' && <span className="ml-2 font-normal text-slate-400">memuat pendeteksi wajah...</span>}
+                    {mask !== 'none' && maskStatus === 'error' && <span className="ml-2 font-normal text-rose-300">gagal dimuat, coba pilih lagi</span>}
+                  </p>
+                  <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+                    {FACE_MASKS.map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={() => chooseMask(m.id)}
+                        className={`shrink-0 px-3 py-1.5 rounded-full border cursor-pointer ${mask === m.id ? 'bg-amber-500 border-amber-400 text-black font-semibold' : 'bg-black/60 border-white/10 text-slate-200 hover:bg-white/10'}`}
+                      >
+                        <span className="mr-1">{m.emoji}</span>
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Pengaturan siaran */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
