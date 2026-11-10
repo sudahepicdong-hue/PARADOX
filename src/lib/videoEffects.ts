@@ -2,9 +2,11 @@
 // Cara kerja: gambar kamera asli dilukis ulang ke kanvas setiap frame (+ filter / topeng),
 // lalu kanvas itulah yang dikirim ke penonton. Topeng mengikuti wajah lewat MediaPipe Face Landmarker.
 import type { FaceLandmarker, NormalizedLandmark } from '@mediapipe/tasks-vision';
+import { BeautyGL, Vec2 } from './beautyGL';
 
 export type ColorFilter = 'none' | 'cerah' | 'hangat' | 'dingin' | 'pink' | 'vintage' | 'bw';
-export type FaceMask = 'none' | 'topeng' | 'kacamata' | 'kucing' | 'masker' | 'sensor';
+export type FaceMask =
+  | 'none' | 'topeng' | 'kacamata' | 'kucing' | 'kelinci' | 'anjing' | 'mahkota' | 'bunga' | 'love' | 'masker' | 'sensor';
 export type MaskStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 export const COLOR_FILTERS: { id: ColorFilter; label: string }[] = [
@@ -21,10 +23,46 @@ export const FACE_MASKS: { id: FaceMask; label: string; emoji: string }[] = [
   { id: 'none', label: 'Tanpa', emoji: '🙂' },
   { id: 'topeng', label: 'Topeng Pesta', emoji: '🎭' },
   { id: 'kacamata', label: 'Kacamata', emoji: '🕶️' },
+  { id: 'love', label: 'Love', emoji: '💕' },
   { id: 'kucing', label: 'Kucing', emoji: '🐱' },
+  { id: 'kelinci', label: 'Kelinci', emoji: '🐰' },
+  { id: 'anjing', label: 'Anjing', emoji: '🐶' },
+  { id: 'mahkota', label: 'Mahkota', emoji: '👑' },
+  { id: 'bunga', label: 'Mahkota Bunga', emoji: '🌸' },
   { id: 'masker', label: 'Masker', emoji: '😷' },
   { id: 'sensor', label: 'Sensor Wajah', emoji: '🟪' }
 ];
+
+// Percantik: semua nilai 0 (mati) sampai 1 (maksimal)
+export interface BeautySettings {
+  smooth: number; // haluskan kulit
+  bright: number; // cerahkan
+  slim: number; // tiruskan wajah
+  eyes: number; // besarkan mata
+  lips: number; // warna bibir
+  blush: number; // rona pipi
+}
+export const BEAUTY_SLIDERS: { key: keyof BeautySettings; label: string }[] = [
+  { key: 'smooth', label: 'Haluskan Kulit' },
+  { key: 'bright', label: 'Cerahkan' },
+  { key: 'slim', label: 'Tiruskan Wajah' },
+  { key: 'eyes', label: 'Besarkan Mata' },
+  { key: 'lips', label: 'Warna Bibir' },
+  { key: 'blush', label: 'Rona Pipi' }
+];
+export const BEAUTY_PRESETS: { id: string; label: string; value: BeautySettings }[] = [
+  { id: 'off', label: 'Mati', value: { smooth: 0, bright: 0, slim: 0, eyes: 0, lips: 0, blush: 0 } },
+  { id: 'natural', label: 'Natural', value: { smooth: 0.45, bright: 0.25, slim: 0.2, eyes: 0.1, lips: 0.2, blush: 0.15 } },
+  { id: 'glowing', label: 'Glowing', value: { smooth: 0.65, bright: 0.5, slim: 0.35, eyes: 0.25, lips: 0.35, blush: 0.3 } },
+  { id: 'max', label: 'Maksimal', value: { smooth: 0.9, bright: 0.7, slim: 0.6, eyes: 0.45, lips: 0.5, blush: 0.45 } }
+];
+const beautyOn = (b: BeautySettings) => Object.values(b).some((v) => v > 0);
+// Hanya "cerahkan" yang bisa jalan tanpa posisi wajah; sisanya perlu pendeteksi wajah
+const beautyNeedsFace = (b: BeautySettings) => b.smooth > 0 || b.slim > 0 || b.eyes > 0 || b.lips > 0 || b.blush > 0;
+
+// Bibir: garis luar & dalam (bagian dalam mulut tidak diwarnai)
+const LIPS_OUTER = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146];
+const LIPS_INNER = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95];
 
 // Lapisan warna di atas gambar (pakai mode campur kanvas, jalan di Android & iPhone)
 const FILTER_LAYERS: Record<ColorFilter, [GlobalCompositeOperation, string][]> = {
@@ -73,6 +111,8 @@ export class VideoEffects {
   readonly track: MediaStreamTrack;
   filter: ColorFilter = 'none';
   private mask: FaceMask = 'none';
+  private beauty: BeautySettings = { ...BEAUTY_PRESETS[0].value };
+  private gl: BeautyGL | null | undefined; // undefined = belum dicoba
   onMaskStatus?: (s: MaskStatus) => void;
 
   private video: HTMLVideoElement;
@@ -82,6 +122,7 @@ export class VideoEffects {
   private landmarker: FaceLandmarker | null = null;
   private landmarks: NormalizedLandmark[] | null = null;
   private missing = 0;
+  private loadingFace = false;
   private lastDetect = 0;
   private raf = 0;
   private stopped = false;
@@ -108,14 +149,26 @@ export class VideoEffects {
 
   setMask(mask: FaceMask) {
     this.mask = mask;
-    if (mask === 'none' || this.landmarker) return;
+    if (mask !== 'none') this.ensureLandmarker();
+  }
+
+  setBeauty(b: BeautySettings) {
+    this.beauty = { ...b };
+    if (beautyNeedsFace(b)) this.ensureLandmarker();
+  }
+
+  // Muat pendeteksi wajah sekali saja (dipakai topeng & percantik)
+  private ensureLandmarker() {
+    if (this.landmarker || this.loadingFace) return;
+    this.loadingFace = true;
     this.setStatus('loading');
     loadLandmarker()
       .then((l) => {
         this.landmarker = l;
         this.setStatus('ready');
       })
-      .catch(() => this.setStatus('error'));
+      .catch(() => this.setStatus('error'))
+      .finally(() => (this.loadingFace = false));
   }
 
   stop() {
@@ -151,9 +204,15 @@ export class VideoEffects {
     }
     const w = canvas.width, h = canvas.height;
 
+    const needFace = this.mask !== 'none' || beautyNeedsFace(this.beauty);
+    if (needFace) this.detect(v);
+    const p = (i: number): Pt => ({ x: this.landmarks![i].x * w, y: this.landmarks![i].y * h });
+
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
-    ctx.drawImage(v, 0, 0, w, h);
+    const beautified = beautyOn(this.beauty) && this.drawBeauty(v, w, h);
+    if (!beautified) ctx.drawImage(v, 0, 0, w, h);
+    if (this.landmarks && beautyOn(this.beauty)) this.drawMakeup(p);
 
     for (const [op, color] of FILTER_LAYERS[this.filter]) {
       ctx.globalCompositeOperation = op;
@@ -163,18 +222,21 @@ export class VideoEffects {
     ctx.globalCompositeOperation = 'source-over';
 
     if (this.mask === 'none') return;
-    this.detect(v);
 
     if (!this.landmarks) {
       // Sensor wajah: kalau wajah belum/tidak terdeteksi, samarkan seluruh gambar supaya wajah tidak bocor
       if (this.mask === 'sensor') this.pixelate(0, 0, w, h, 40);
       return;
     }
-    const p = (i: number): Pt => ({ x: this.landmarks![i].x * w, y: this.landmarks![i].y * h });
     switch (this.mask) {
       case 'topeng': return this.drawMasquerade(p);
       case 'kacamata': return this.drawSunglasses(p);
       case 'kucing': return this.drawCat(p);
+      case 'kelinci': return this.drawBunny(p);
+      case 'anjing': return this.drawDog(p);
+      case 'mahkota': return this.drawCrown(p);
+      case 'bunga': return this.drawFlowerCrown(p);
+      case 'love': return this.drawLove(p);
       case 'masker': return this.drawMedicalMask(p);
       case 'sensor': return this.drawSensor(w, h);
     }
@@ -365,6 +427,261 @@ export class VideoEffects {
     ctx.restore();
   }
 
+  // Haluskan / cerahkan / tiruskan / besarkan mata lewat WebGL. false = tidak bisa (pakai gambar biasa).
+  private drawBeauty(v: HTMLVideoElement, w: number, h: number): boolean {
+    if (this.gl === undefined) this.gl = BeautyGL.create();
+    if (!this.gl) return false;
+    const b = this.beauty;
+    const lm = this.landmarks;
+    const zero: Vec2 = [0, 0];
+    if (lm) {
+      const P = (i: number): Vec2 => [lm[i].x * w, lm[i].y * h];
+      const avg = (ids: number[]): Vec2 => {
+        const pts = ids.map(P);
+        return [pts.reduce((a, q) => a + q[0], 0) / pts.length, pts.reduce((a, q) => a + q[1], 0) / pts.length];
+      };
+      const d = (a: Vec2, c: Vec2) => Math.hypot(a[0] - c[0], a[1] - c[1]);
+      const faceW = d(P(234), P(454));
+      const faceH = d(P(10), P(152));
+      const l = P(33), r = P(263), nose = P(1);
+      const from = [P(132), P(172), P(361), P(397)];
+      this.gl.render(v, w, h, {
+        hasFace: true,
+        eyeL: avg([33, 133, 159, 145]),
+        eyeR: avg([263, 362, 386, 374]),
+        eyeRad: d(P(33), P(133)) * 1.05,
+        eye: b.eyes * 0.22,
+        slimFrom: from,
+        slimTo: from.map((c): Vec2 => [c[0] + (nose[0] - c[0]) * 0.2 * b.slim, c[1] + (nose[1] - c[1]) * 0.2 * b.slim]),
+        slimRad: faceW * 0.45,
+        faceC: [(P(10)[0] + P(152)[0]) / 2, (P(10)[1] + P(152)[1]) / 2],
+        faceAx: [faceW * 0.5, faceH * 0.55],
+        faceAng: Math.atan2(r[1] - l[1], r[0] - l[0]),
+        smooth: b.smooth,
+        bright: b.bright,
+        blurR: Math.max(1.5, faceW * 0.013)
+      });
+    } else {
+      this.gl.render(v, w, h, {
+        hasFace: false, eyeL: zero, eyeR: zero, eyeRad: 1, eye: 0,
+        slimFrom: [zero, zero, zero, zero], slimTo: [zero, zero, zero, zero], slimRad: 1,
+        faceC: zero, faceAx: [1, 1], faceAng: 0,
+        smooth: b.smooth, bright: b.bright, blurR: Math.max(1.5, (w / 720) * 3)
+      });
+    }
+    this.ctx.drawImage(this.gl.canvas, 0, 0, w, h);
+    return true;
+  }
+
+  // Warna bibir & rona pipi
+  private drawMakeup(p: (i: number) => Pt) {
+    const ctx = this.ctx;
+    const b = this.beauty;
+    const faceW = dist(p(234), p(454));
+    if (b.blush > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'soft-light';
+      for (const i of [50, 280]) {
+        const c = p(i);
+        const g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, faceW * 0.17);
+        g.addColorStop(0, `rgba(255,60,100,${0.75 * b.blush})`);
+        g.addColorStop(1, 'rgba(255,60,100,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(c.x - faceW * 0.2, c.y - faceW * 0.2, faceW * 0.4, faceW * 0.4);
+      }
+      ctx.restore();
+    }
+    if (b.lips > 0) {
+      ctx.save();
+      ctx.beginPath();
+      LIPS_OUTER.forEach((i, k) => (k ? ctx.lineTo(p(i).x, p(i).y) : ctx.moveTo(p(i).x, p(i).y)));
+      ctx.closePath();
+      LIPS_INNER.forEach((i, k) => (k ? ctx.lineTo(p(i).x, p(i).y) : ctx.moveTo(p(i).x, p(i).y)));
+      ctx.closePath();
+      ctx.globalCompositeOperation = 'soft-light';
+      ctx.fillStyle = `rgba(230,20,70,${0.9 * b.lips})`;
+      ctx.fill('evenodd');
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.fillStyle = `rgba(255,110,140,${0.35 * b.lips})`;
+      ctx.fill('evenodd');
+      ctx.restore();
+    }
+  }
+
+  private drawBunny(p: (i: number) => Pt) {
+    const { ang, d } = this.eyeFrame(p);
+    this.withFrame(p(10), ang, d, (ctx) => {
+      ctx.translate(0, -0.35);
+      for (const s of [-1, 1]) {
+        ctx.save();
+        ctx.translate(s * 0.32, -0.55);
+        ctx.rotate(s * 0.18);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 0.2, 0.62, 0, 0, Math.PI * 2);
+        ctx.fillStyle = '#fafafa';
+        ctx.fill();
+        ctx.lineWidth = 0.025;
+        ctx.strokeStyle = '#d9d9d9';
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.ellipse(0, 0.05, 0.1, 0.45, 0, 0, Math.PI * 2);
+        ctx.fillStyle = '#f9b3c6';
+        ctx.fill();
+        ctx.restore();
+      }
+    });
+    this.withFrame(p(1), ang, d, (ctx) => {
+      ctx.beginPath();
+      ctx.ellipse(0, -0.01, 0.09, 0.06, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#f48fb1';
+      ctx.fill();
+    });
+  }
+
+  private drawDog(p: (i: number) => Pt) {
+    const { ang, d } = this.eyeFrame(p);
+    // Telinga panjang di sisi kepala
+    this.withFrame(p(10), ang, d, (ctx) => {
+      for (const s of [-1, 1]) {
+        ctx.save();
+        ctx.translate(s * 1.0, 0.0);
+        ctx.rotate(s * -0.35);
+        ctx.beginPath();
+        ctx.ellipse(0, 0.25, 0.24, 0.55, 0, 0, Math.PI * 2);
+        const g = ctx.createLinearGradient(0, -0.3, 0, 0.8);
+        g.addColorStop(0, '#8d5a2b');
+        g.addColorStop(1, '#5d3a1a');
+        ctx.fillStyle = g;
+        ctx.fill();
+        ctx.restore();
+      }
+    });
+    // Hidung hitam mengkilap
+    this.withFrame(p(1), ang, d, (ctx) => {
+      ctx.beginPath();
+      ctx.ellipse(0, -0.02, 0.17, 0.11, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#1b1b1b';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(-0.05, -0.06, 0.05, 0.025, -0.3, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fill();
+    });
+    // Lidah keluar kalau mulut terbuka
+    const open = dist(p(13), p(14)) / dist(p(10), p(152));
+    if (open > 0.045) {
+      this.withFrame(p(14), ang, d, (ctx) => {
+        const len = Math.min(0.75, 0.25 + open * 4);
+        ctx.beginPath();
+        ctx.moveTo(-0.17, -0.05);
+        ctx.lineTo(-0.17, len - 0.15);
+        ctx.quadraticCurveTo(-0.17, len, 0, len);
+        ctx.quadraticCurveTo(0.17, len, 0.17, len - 0.15);
+        ctx.lineTo(0.17, -0.05);
+        ctx.closePath();
+        ctx.fillStyle = '#ff6f91';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, len * 0.7);
+        ctx.lineWidth = 0.02;
+        ctx.strokeStyle = '#d94c70';
+        ctx.stroke();
+      });
+    }
+  }
+
+  private drawCrown(p: (i: number) => Pt) {
+    const { ang, d } = this.eyeFrame(p);
+    this.withFrame(p(10), ang, d, (ctx) => {
+      ctx.translate(0, -0.3);
+      ctx.beginPath();
+      ctx.moveTo(-0.7, 0);
+      ctx.lineTo(-0.78, -0.55);
+      ctx.lineTo(-0.4, -0.28);
+      ctx.lineTo(0, -0.72);
+      ctx.lineTo(0.4, -0.28);
+      ctx.lineTo(0.78, -0.55);
+      ctx.lineTo(0.7, 0);
+      ctx.closePath();
+      const g = ctx.createLinearGradient(0, -0.7, 0, 0);
+      g.addColorStop(0, '#fff3a6');
+      g.addColorStop(0.5, '#f5c542');
+      g.addColorStop(1, '#b8860b');
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.lineWidth = 0.03;
+      ctx.strokeStyle = '#7a5600';
+      ctx.stroke();
+      const gems: [number, number, string][] = [[-0.78, -0.58, '#e53935'], [0, -0.76, '#1e88e5'], [0.78, -0.58, '#e53935'], [0, -0.14, '#43a047']];
+      for (const [x, y, c] of gems) {
+        ctx.beginPath();
+        ctx.arc(x, y, 0.07, 0, Math.PI * 2);
+        ctx.fillStyle = c;
+        ctx.fill();
+        ctx.lineWidth = 0.02;
+        ctx.stroke();
+      }
+    });
+  }
+
+  private drawFlowerCrown(p: (i: number) => Pt) {
+    const { ang, d } = this.eyeFrame(p);
+    const colors = ['#f48fb1', '#ffffff', '#ce93d8', '#ffcc80'];
+    this.withFrame(p(10), ang, d, (ctx) => {
+      ctx.translate(0, -0.12);
+      const n = 9;
+      for (let k = 0; k < n; k++) {
+        const t = k / (n - 1);
+        const x = -0.9 + t * 1.8;
+        const y = -0.38 * Math.sin(Math.PI * t) + 0.08;
+        const r = k % 2 ? 0.1 : 0.13;
+        // daun
+        ctx.beginPath();
+        ctx.ellipse(x + 0.1, y + 0.06, 0.09, 0.04, 0.6, 0, Math.PI * 2);
+        ctx.fillStyle = '#66bb6a';
+        ctx.fill();
+        // kelopak
+        ctx.fillStyle = colors[k % colors.length];
+        for (let j = 0; j < 5; j++) {
+          const a = (j / 5) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.arc(x + Math.cos(a) * r * 0.6, y + Math.sin(a) * r * 0.6, r * 0.55, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.35, 0, Math.PI * 2);
+        ctx.fillStyle = '#fdd835';
+        ctx.fill();
+      }
+    });
+  }
+
+  // Hati berputar di sekitar kepala + pipi merona
+  private drawLove(p: (i: number) => Pt) {
+    const ctx = this.ctx;
+    const t = performance.now() / 1000;
+    const faceW = dist(p(234), p(454));
+    const faceH = dist(p(10), p(152));
+    const c = mid(p(10), p(152));
+    for (let k = 0; k < 7; k++) {
+      const a = t * 1.2 + (k / 7) * Math.PI * 2;
+      const x = c.x + Math.cos(a) * faceW * 0.85;
+      const y = c.y - faceH * 0.15 + Math.sin(a) * faceH * 0.75;
+      const size = faceW * (0.13 + 0.04 * Math.sin(t * 3 + k));
+      heart(ctx, x, y - size / 2, size, k % 2 ? '#ff4d8d' : '#ff1744');
+    }
+    const { ang, d } = this.eyeFrame(p);
+    for (const i of [50, 280]) {
+      this.withFrame(p(i), ang, d, (g) => {
+        g.beginPath();
+        g.ellipse(0, 0, 0.17, 0.09, 0, 0, Math.PI * 2);
+        g.fillStyle = 'rgba(255,82,120,0.45)';
+        g.fill();
+      });
+    }
+  }
+
   private drawSensor(w: number, h: number) {
     let x1 = 1, y1 = 1, x2 = 0, y2 = 0;
     for (const l of this.landmarks!) {
@@ -390,4 +707,16 @@ export class VideoEffects {
     ctx.drawImage(this.pixel, 0, 0, tw, th, x, y, bw, bh);
     ctx.restore();
   }
+}
+
+function heart(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string) {
+  const s = size;
+  ctx.beginPath();
+  ctx.moveTo(x, y + s * 0.3);
+  ctx.bezierCurveTo(x, y, x - s * 0.5, y, x - s * 0.5, y + s * 0.3);
+  ctx.bezierCurveTo(x - s * 0.5, y + s * 0.6, x, y + s * 0.8, x, y + s);
+  ctx.bezierCurveTo(x, y + s * 0.8, x + s * 0.5, y + s * 0.6, x + s * 0.5, y + s * 0.3);
+  ctx.bezierCurveTo(x + s * 0.5, y, x, y, x, y + s * 0.3);
+  ctx.fillStyle = color;
+  ctx.fill();
 }

@@ -12,7 +12,29 @@ import { X, Mic, MicOff, Video, VideoOff, Radio, Users, Heart, AlertCircle, Load
 import { Talent } from '../types/talent';
 import { getLiveToken, sendLiveHeartbeat, moderateLive, recordLiveViewers } from '../lib/db';
 import { useVideoAspect, videoBoxStyle, isPortraitPhone, openCameraAndMic } from '../lib/useVideoAspect';
-import { VideoEffects, COLOR_FILTERS, FACE_MASKS, ColorFilter, FaceMask, MaskStatus } from '../lib/videoEffects';
+import {
+  VideoEffects,
+  COLOR_FILTERS,
+  FACE_MASKS,
+  BEAUTY_PRESETS,
+  BEAUTY_SLIDERS,
+  ColorFilter,
+  FaceMask,
+  MaskStatus,
+  BeautySettings
+} from '../lib/videoEffects';
+
+// Pilihan percantik & filter diingat di HP ini, supaya talent tidak perlu atur ulang setiap live
+const FX_KEY = 'paradox_live_fx';
+const loadFx = (): { beauty: BeautySettings; preset: string; filter: ColorFilter } => {
+  try {
+    const v = JSON.parse(localStorage.getItem(FX_KEY) || 'null');
+    if (v?.beauty) return v;
+  } catch {
+    // abaikan
+  }
+  return { beauty: { ...BEAUTY_PRESETS[0].value }, preset: 'off', filter: 'none' };
+};
 import {
   ChatMessage,
   appendMessage,
@@ -60,7 +82,11 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const peakRef = useRef(0);
-  const [filter, setFilter] = useState<ColorFilter>('none');
+  const [savedFx] = useState(loadFx);
+  const [filter, setFilter] = useState<ColorFilter>(savedFx.filter);
+  const [beauty, setBeauty] = useState<BeautySettings>(savedFx.beauty);
+  const [beautyPreset, setBeautyPreset] = useState(savedFx.preset);
+  const [showBeautySliders, setShowBeautySliders] = useState(false);
   const [mask, setMask] = useState<FaceMask>('none');
   const [maskStatus, setMaskStatus] = useState<MaskStatus>('idle');
   const [effectsReady, setEffectsReady] = useState(false);
@@ -91,6 +117,8 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
         try {
           const fx = new VideoEffects(video);
           fx.onMaskStatus = setMaskStatus;
+          fx.filter = savedFx.filter;
+          fx.setBeauty(savedFx.beauty);
           effectsRef.current = fx;
           output = fx.track;
           setEffectsReady(true);
@@ -239,6 +267,22 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
   const chooseFilter = (f: ColorFilter) => {
     setFilter(f);
     if (effectsRef.current) effectsRef.current.filter = f;
+    saveFx({ beauty, preset: beautyPreset, filter: f });
+  };
+
+  const saveFx = (next: { beauty: BeautySettings; preset: string; filter: ColorFilter }) => {
+    try {
+      localStorage.setItem(FX_KEY, JSON.stringify(next));
+    } catch {
+      // abaikan
+    }
+  };
+
+  const applyBeauty = (b: BeautySettings, preset: string) => {
+    setBeauty(b);
+    setBeautyPreset(preset);
+    effectsRef.current?.setBeauty(b);
+    saveFx({ beauty: b, preset, filter });
   };
 
   const chooseMask = (m: FaceMask) => {
@@ -359,9 +403,58 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
               </div>
             </div>
 
-            {/* Filter & topeng (langsung terlihat oleh penonton, bisa diganti saat live) */}
+            {/* Percantik, filter & topeng (langsung terlihat oleh penonton, bisa diganti saat live) */}
             {effectsReady && (
-              <div className="space-y-2 text-xs">
+              <div className="space-y-3 text-xs">
+                <div>
+                  <p className="text-slate-300 font-semibold mb-1.5 flex items-center justify-between">
+                    <span>
+                      ✨ Percantik
+                      {maskStatus === 'loading' && <span className="ml-2 font-normal text-slate-400">memuat pendeteksi wajah...</span>}
+                      {maskStatus === 'error' && <span className="ml-2 font-normal text-rose-300">pendeteksi wajah gagal dimuat, coba pilih lagi</span>}
+                    </span>
+                    <button
+                      onClick={() => setShowBeautySliders((v) => !v)}
+                      className="font-normal text-amber-400 hover:text-amber-300 cursor-pointer"
+                    >
+                      {showBeautySliders ? 'Tutup' : 'Atur sendiri'}
+                    </button>
+                  </p>
+                  <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+                    {BEAUTY_PRESETS.map((b) => (
+                      <button
+                        key={b.id}
+                        onClick={() => applyBeauty({ ...b.value }, b.id)}
+                        className={`shrink-0 px-3 py-1.5 rounded-full border cursor-pointer ${beautyPreset === b.id ? 'bg-amber-500 border-amber-400 text-black font-semibold' : 'bg-black/60 border-white/10 text-slate-200 hover:bg-white/10'}`}
+                      >
+                        {b.label}
+                      </button>
+                    ))}
+                    {beautyPreset === 'custom' && (
+                      <span className="shrink-0 px-3 py-1.5 rounded-full border bg-amber-500 border-amber-400 text-black font-semibold">Kustom</span>
+                    )}
+                  </div>
+                  {showBeautySliders && (
+                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 p-3 rounded-lg bg-black/40 border border-white/10">
+                      {BEAUTY_SLIDERS.map((sl) => (
+                        <label key={sl.key} className="block">
+                          <span className="flex justify-between text-slate-300 mb-1">
+                            {sl.label}
+                            <span className="text-slate-500">{Math.round(beauty[sl.key] * 100)}</span>
+                          </span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            value={Math.round(beauty[sl.key] * 100)}
+                            onChange={(e) => applyBeauty({ ...beauty, [sl.key]: Number(e.target.value) / 100 }, 'custom')}
+                            className="w-full accent-amber-500 cursor-pointer"
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <div>
                   <p className="text-slate-300 font-semibold mb-1.5">Filter</p>
                   <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
@@ -379,8 +472,6 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
                 <div>
                   <p className="text-slate-300 font-semibold mb-1.5">
                     Topeng
-                    {mask !== 'none' && maskStatus === 'loading' && <span className="ml-2 font-normal text-slate-400">memuat pendeteksi wajah...</span>}
-                    {mask !== 'none' && maskStatus === 'error' && <span className="ml-2 font-normal text-rose-300">gagal dimuat, coba pilih lagi</span>}
                   </p>
                   <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
                     {FACE_MASKS.map((m) => (
