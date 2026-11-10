@@ -25,7 +25,9 @@ const ACTION_LABELS: Record<string, string> = {
   'report.open': 'membuka ulang laporan',
   'settings.update': 'mengubah',
   'live.ban': 'memblokir penonton dari siaran',
-  'live.unban': 'membuka blokir penonton di siaran'
+  'live.unban': 'membuka blokir penonton di siaran',
+  'admin.grant': 'menjadikan admin:',
+  'admin.revoke': 'mencabut akses admin dari'
 };
 
 const describe = (e: AuditEntry) => {

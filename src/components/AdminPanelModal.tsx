@@ -4,6 +4,7 @@ import { TalentVerificationPanel } from './TalentVerificationPanel';
 import { ReportsPanel } from './ReportsPanel';
 import { AuditLogPanel } from './AuditLogPanel';
 import { AdminStatsPanel } from './AdminStatsPanel';
+import { ManageAdminsPanel } from './ManageAdminsPanel';
 import { ServicePicker } from './ServicePicker';
 import { knownServices } from '../lib/services';
 import {
@@ -59,7 +60,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   onTalentChanged
 }) => {
   // Tabs: 'talents' or 'settings' or 'backup' or 'reports'
-  const [activeTab, setActiveTab] = useState<'talents' | 'settings' | 'backup' | 'reports' | 'history' | 'stats'>('talents');
+  const [activeTab, setActiveTab] = useState<'talents' | 'settings' | 'backup' | 'reports' | 'history' | 'stats' | 'admins'>('talents');
   const [verifyingTalentId, setVerifyingTalentId] = useState<string | null>(null);
   const [openReportCount, setOpenReportCount] = useState<number | null>(null);
   const verifyingTalent = talents.find((t) => t.id === verifyingTalentId) || null;
@@ -396,6 +397,18 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
           </button>
 
           <button
+            onClick={() => { setActiveTab('admins'); setIsAddingNew(false); setEditingTalent(null); setVerifyingTalentId(null); }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'admins'
+                ? 'bg-red-600 text-white shadow-md shadow-red-600/30'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>Kelola Admin</span>
+          </button>
+
+          <button
             onClick={() => { setActiveTab('backup'); setIsAddingNew(false); setEditingTalent(null); }}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'backup'
@@ -617,6 +630,12 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
         {activeTab === 'stats' && (
           <div className="flex-1 overflow-y-auto pr-1">
             <AdminStatsPanel />
+          </div>
+        )}
+
+        {activeTab === 'admins' && (
+          <div className="flex-1 overflow-y-auto pr-1">
+            <ManageAdminsPanel />
           </div>
         )}
 

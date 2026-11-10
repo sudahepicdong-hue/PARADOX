@@ -719,3 +719,27 @@ export async function setTalentActive(talentId: string, isActive: boolean): Prom
   const { error } = await supabase.from('talents').update({ is_active: isActive }).eq('id', talentId);
   if (error) throw error;
 }
+
+// ---------- Kelola admin ----------
+export interface AdminAccount {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: string;
+}
+
+export async function fetchAdmins(): Promise<AdminAccount[]> {
+  const { data, error } = await supabase.rpc('admin_list_admins');
+  if (error) throw new Error(error.message);
+  return ((data as { id: string; name: string; email: string; created_at: string }[]) ?? []).map((a) => ({
+    id: a.id,
+    name: a.name,
+    email: a.email,
+    createdAt: a.created_at
+  }));
+}
+
+export async function setAdminRole(email: string, makeAdmin: boolean): Promise<void> {
+  const { error } = await supabase.rpc('admin_set_admin', { p_email: email, p_make_admin: makeAdmin });
+  if (error) throw new Error(error.message);
+}
