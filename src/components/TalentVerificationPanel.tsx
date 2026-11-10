@@ -3,6 +3,7 @@ import { ArrowLeft, ShieldCheck, ShieldAlert, FileText, Eye, Trash2, Upload, Key
 import { Talent, TalentDocument } from '../types/talent';
 import * as db from '../lib/db';
 import { LiveScheduleManager } from './LiveScheduleManager';
+import { TelegramStatusLink } from './TelegramStatusLink';
 import { LiveBansList } from './LiveBansList';
 
 interface TalentVerificationPanelProps {
@@ -344,6 +345,7 @@ export const TalentVerificationPanel: React.FC<TalentVerificationPanelProps> = (
         )}
       </div>
 
+      <TelegramStatusLink talentId={talent.id} talentName={talent.name} isOnline={db.isOnlineNow(talent)} />
       <LiveScheduleManager talentId={talent.id} />
       <LiveBansList talentId={talent.id} />
     </div>

@@ -62,6 +62,11 @@ export const TalentCard: React.FC<TalentCardProps> = ({
               <Radio className="w-3.5 h-3.5 animate-pulse text-white" />
               <span>LIVE</span>
             </button>
+          ) : talent.isOnline ? (
+            <span className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-300 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-full border border-emerald-500/40">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              Online
+            </span>
           ) : (
             <span className="text-[11px] font-medium text-slate-400 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-full border border-white/10">
               Offline

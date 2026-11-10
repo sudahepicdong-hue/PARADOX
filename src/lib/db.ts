@@ -37,6 +37,7 @@ interface TalentRow {
   is_active: boolean;
   id_verified_at: string | null;
   live_heartbeat_at: string | null;
+  online_until: string | null;
 }
 
 export const toTalent = (r: TalentRow): Talent => ({
@@ -71,7 +72,12 @@ export const toTalent = (r: TalentRow): Talent => ({
   isActive: r.is_active ?? true,
   idVerifiedAt: r.id_verified_at ?? undefined,
   liveHeartbeatAt: r.live_heartbeat_at ?? undefined,
+  onlineUntil: r.online_until ?? undefined,
 });
+
+// Online = talent mengirim /online ke bot Telegram dan belum lewat batas waktunya
+export const isOnlineNow = (t: Talent, now = Date.now()) =>
+  Boolean(t.onlineUntil) && new Date(t.onlineUntil!).getTime() > now;
 
 // Live dianggap mati kalau browser talent tidak mengirim "detak" selama 90 detik
 // (misalnya talent menutup tab tanpa menekan "Akhiri Live").
@@ -609,6 +615,35 @@ export const setTalentPassword = (talentId: string, password: string) =>
 // Cabut akses login talent
 export const removeTalentLogin = (talentId: string) =>
   callTalentAccountFunction({ action: 'remove_login', talentId });
+
+// ---------------------------------------------------------------------
+// Bot Telegram talent (status Online / Offline)
+// ---------------------------------------------------------------------
+export interface TalentTelegramInfo {
+  linked: boolean;
+  username: string | null;
+  linked_at: string | null;
+  pending_expires_at: string | null;
+  bot_ready: boolean;
+}
+
+export async function fetchTalentTelegramInfo(talentId: string): Promise<TalentTelegramInfo> {
+  const { data, error } = await supabase.rpc('talent_telegram_info', { p_talent_id: talentId });
+  if (error) throw error;
+  return data as TalentTelegramInfo;
+}
+
+// Link sekali pakai, berlaku 7 hari. Link lama yang belum dipakai otomatis batal.
+export async function createTalentLinkCode(talentId: string): Promise<{ url: string; expires_at: string }> {
+  const { data, error } = await supabase.rpc('create_talent_link_code', { p_talent_id: talentId });
+  if (error) throw error;
+  return data as { url: string; expires_at: string };
+}
+
+export async function unlinkTalentTelegram(talentId: string): Promise<void> {
+  const { error } = await supabase.rpc('unlink_talent_telegram', { p_talent_id: talentId });
+  if (error) throw error;
+}
 
 export async function linkTalentAccount(email: string, talentId: string): Promise<void> {
   const { error } = await supabase.rpc('admin_link_talent_account', { p_email: email, p_talent_id: talentId });

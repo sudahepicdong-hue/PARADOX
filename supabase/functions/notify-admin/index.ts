@@ -40,6 +40,13 @@ function buildMessage(event: string, d: Record<string, unknown>, siteUrl: string
         'Menunggu verifikasi: Admin Studio → Kelola Talent → ikon perisai.' +
         link
       );
+    case 'talent_linked':
+      return (
+        `🔗 <b>${esc(d.talent_name)}</b> menghubungkan akun Telegram` +
+        (d.username ? ` (@${esc(d.username)})` : '') +
+        ' ke bot status talent.\n\nKalau ini bukan talent yang benar, putuskan sambungannya di Admin Studio → Kelola Talent → ikon perisai.' +
+        link
+      );
     default:
       return null;
   }

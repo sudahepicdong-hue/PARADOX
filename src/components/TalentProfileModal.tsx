@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { X, Save, Trash2, Upload, Eye, EyeOff, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { Talent, MediaItem } from '../types/talent';
-import { uploadMedia } from '../lib/db';
+import { uploadMedia, isOnlineNow } from '../lib/db';
+import { TelegramStatusLink } from './TelegramStatusLink';
 import { MyDocumentsSection } from './MyDocumentsSection';
 import { LiveScheduleManager } from './LiveScheduleManager';
 import { LiveBansList } from './LiveBansList';
@@ -277,6 +278,7 @@ export const TalentProfileModal: React.FC<TalentProfileModalProps> = ({ talent, 
           </div>
         </form>
 
+        <TelegramStatusLink talentId={talent.id} talentName={talent.name} isOnline={isOnlineNow(talent)} />
         <MyDocumentsSection talentId={talent.id} isVerified={Boolean(talent.idVerifiedAt)} />
         <LiveScheduleManager talentId={talent.id} />
         <LiveBansList talentId={talent.id} />

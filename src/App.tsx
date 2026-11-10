@@ -70,7 +70,12 @@ export default function App() {
     return () => window.clearInterval(id);
   }, []);
   const talentsView = React.useMemo(
-    () => talents.map((t) => (t.isLive && !db.isLiveNow(t, nowTick) ? { ...t, isLive: false } : t)),
+    () =>
+      talents.map((t) => ({
+        ...t,
+        isLive: t.isLive && db.isLiveNow(t, nowTick),
+        isOnline: db.isOnlineNow(t, nowTick)
+      })),
     [talents, nowTick]
   );
   const publicTalents = talentsView.filter(db.isPubliclyVisible);
@@ -254,12 +259,13 @@ export default function App() {
   }, [selectedDetailTalent?.id]);
 
   // Keep selectedDetailTalent updated if talents change (e.g., likes or reviews)
+  // (pakai talentsView supaya status Live/Online yang sudah dihitung ikut terbawa)
   useEffect(() => {
     if (selectedDetailTalent) {
-      const updated = talents.find((t) => t.id === selectedDetailTalent.id);
+      const updated = talentsView.find((t) => t.id === selectedDetailTalent.id);
       if (updated) setSelectedDetailTalent(updated);
     }
-  }, [talents]);
+  }, [talentsView]);
 
   const replaceTalent = (updated: Talent) =>
     setTalents((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));

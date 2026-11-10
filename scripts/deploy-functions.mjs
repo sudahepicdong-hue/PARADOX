@@ -15,13 +15,22 @@ import { join } from 'node:path';
 import { randomBytes, createECDH } from 'node:crypto';
 import postgres from 'postgres';
 
-const FUNCTIONS = ['admin-talent-account', 'livekit-token', 'delete-account', 'live-moderate', 'notify-admin', 'push-live'];
+const FUNCTIONS = [
+  'admin-talent-account',
+  'livekit-token',
+  'delete-account',
+  'live-moderate',
+  'notify-admin',
+  'push-live',
+  'talent-bot',
+];
 const SECRET_KEYS = [
   'LIVEKIT_URL',
   'LIVEKIT_API_KEY',
   'LIVEKIT_API_SECRET',
   'TELEGRAM_BOT_TOKEN',
   'TELEGRAM_ADMIN_CHAT_ID',
+  'TELEGRAM_TALENT_BOT_TOKEN',
   'PUBLIC_SITE_URL',
   'VAPID_PUBLIC_KEY',
   'VAPID_PRIVATE_KEY',
@@ -129,4 +138,78 @@ for (const fn of FUNCTIONS) {
   supabaseOrExit(['functions', 'deploy', fn, '--no-verify-jwt', '--use-api']);
 }
 
+// 4. Sambungkan bot Telegram talent ke fungsi talent-bot (webhook)
+await setupTalentBot();
+
 console.log('\nSelesai.');
+
+async function setupTalentBot() {
+  const botToken = process.env.TELEGRAM_TALENT_BOT_TOKEN?.trim();
+  if (!botToken) {
+    console.warn('\n! TELEGRAM_TALENT_BOT_TOKEN belum diisi — fitur status Online/Offline talent belum aktif.');
+    return;
+  }
+  if (botToken === process.env.TELEGRAM_BOT_TOKEN?.trim()) {
+    console.warn('\n! TELEGRAM_TALENT_BOT_TOKEN sama dengan bot admin. Pakai bot BARU khusus talent.');
+    return;
+  }
+
+  const api = async (method, body) => {
+    const r = await fetch(`https://api.telegram.org/bot${botToken}/${method}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body ?? {}),
+    });
+    return r.json();
+  };
+
+  console.log('\n> Menyambungkan bot Telegram talent...');
+  const me = await api('getMe');
+  if (!me.ok) {
+    console.warn(`! Token bot talent ditolak Telegram: ${me.description}`);
+    return;
+  }
+
+  const hookUrl = `${url}/functions/v1/talent-bot`;
+  const info = await api('getWebhookInfo');
+  const existing = info.result?.url ?? '';
+  if (existing && existing !== hookUrl) {
+    // Jangan merusak sistem lain yang sudah memakai bot ini
+    console.warn(`! Bot @${me.result.username} sudah tersambung ke sistem lain (${existing}). Tidak diubah.`);
+    console.warn('  Buat bot baru di @BotFather khusus untuk status talent.');
+    return;
+  }
+
+  const set = await api('setWebhook', {
+    url: hookUrl,
+    secret_token: notifySecret, // diperiksa oleh fungsi talent-bot
+    allowed_updates: ['message', 'callback_query'],
+  });
+  if (!set.ok) {
+    console.warn(`! Gagal memasang webhook bot talent: ${set.description}`);
+    return;
+  }
+
+  await api('setMyCommands', {
+    commands: [
+      { command: 'online', description: 'Tampil Online di website PARADOX' },
+      { command: 'offline', description: 'Tampil Offline' },
+      { command: 'status', description: 'Cek status sekarang' },
+    ],
+  });
+  await api('setMyDescription', {
+    description: 'Bot status talent PARADOX. Hubungkan akun lewat link dari admin, lalu kirim /online atau /offline.',
+  });
+
+  if (process.env.SUPABASE_DB_URL) {
+    const sql = postgres(process.env.SUPABASE_DB_URL, { ssl: 'require', max: 1, onnotice: () => {} });
+    try {
+      await sql`
+        insert into private.app_config (key, value) values ('talent_bot_username', ${me.result.username})
+        on conflict (key) do update set value = excluded.value`;
+    } finally {
+      await sql.end();
+    }
+  }
+  console.log(`> Bot talent @${me.result.username} siap.`);
+}

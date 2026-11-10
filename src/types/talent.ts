@@ -52,6 +52,8 @@ export interface Talent {
   isActive?: boolean; // false = disembunyikan dari katalog
   idVerifiedAt?: string; // diisi setelah admin memverifikasi dokumen identitas 18+
   liveHeartbeatAt?: string; // terakhir kali browser talent memberi tanda masih siaran
+  onlineUntil?: string; // diatur talent lewat bot Telegram (/online, /offline)
+  isOnline?: boolean; // dihitung di website: onlineUntil masih di masa depan
 }
 
 export interface TalentDocument {

@@ -143,6 +143,12 @@ export const TalentDetailModal: React.FC<TalentDetailModalProps> = ({
                 <span className="hidden sm:inline">Terverifikasi</span>
               </span>
             )}
+            {!talent.isLive && talent.isOnline && (
+              <span className="text-xs text-emerald-300 font-medium flex items-center gap-1.5 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30 shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                Online
+              </span>
+            )}
             {talent.isLive && (
               <button
                 onClick={() => onOpenLive && onOpenLive(talent)}
