@@ -3,6 +3,7 @@ import { Room, RoomEvent, Track, RemoteTrack, RemoteParticipant, DisconnectReaso
 import { X, Radio, Users, Heart, Volume2, Loader2, User as UserIcon } from 'lucide-react';
 import { Talent } from '../types/talent';
 import { getLiveToken, moderateLive } from '../lib/db';
+import { useVideoAspect, videoBoxStyle } from '../lib/useVideoAspect';
 import {
   ChatMessage,
   appendMessage,
@@ -58,6 +59,7 @@ export const LiveShowcaseModal: React.FC<LiveShowcaseModalProps> = ({
   const [hearts, setHearts] = useState<FloatingHeart[]>([]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRatio = useVideoAspect(videoRef);
   const audioBoxRef = useRef<HTMLDivElement>(null);
   const roomRef = useRef<Room | null>(null);
 
@@ -248,7 +250,7 @@ export const LiveShowcaseModal: React.FC<LiveShowcaseModalProps> = ({
         <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 overflow-y-auto overscroll-contain lg:overflow-visible">
           {/* Video */}
           <div className="lg:col-span-2 p-3 sm:p-4">
-            <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/10">
+            <div className="relative mx-auto rounded-xl overflow-hidden bg-black border border-white/10" style={videoBoxStyle(videoRatio)}>
               <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-contain" />
               <div ref={audioBoxRef} className="hidden" />
 

@@ -13,6 +13,7 @@ import {
 import { X, Mic, MicOff, Video, VideoOff, Radio, Users, Heart, AlertCircle, Loader2 } from 'lucide-react';
 import { Talent } from '../types/talent';
 import { getLiveToken, sendLiveHeartbeat, moderateLive, recordLiveViewers } from '../lib/db';
+import { useVideoAspect, videoBoxStyle, isPortraitPhone } from '../lib/useVideoAspect';
 import {
   ChatMessage,
   appendMessage,
@@ -62,6 +63,7 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
   const peakRef = useRef(0);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRatio = useVideoAspect(videoRef, isPortraitPhone() ? 9 / 16 : 16 / 9);
   const tracksRef = useRef<LocalTrack[]>([]);
   const roomRef = useRef<Room | null>(null);
   const heartbeatRef = useRef<number | null>(null);
@@ -73,7 +75,11 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
   // 1. Nyalakan preview kamera saat studio dibuka
   useEffect(() => {
     let cancelled = false;
-    createLocalTracks({ audio: true, video: { facingMode: 'user', resolution: VideoPresets.h720.resolution } })
+    createLocalTracks({ audio: true, video: {
+        facingMode: 'user',
+        // HP tegak: minta kamera tegak (720x1280) supaya wajah tidak terpotong
+        resolution: isPortraitPhone() ? { width: 720, height: 1280, aspectRatio: 9 / 16 } : VideoPresets.h720.resolution
+      } })
       .then((tracks) => {
         if (cancelled) {
           tracks.forEach((t) => t.stop());
@@ -290,8 +296,8 @@ export const LiveBroadcastModal: React.FC<LiveBroadcastModalProps> = ({
         <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 overflow-y-auto overscroll-contain lg:overflow-visible">
           {/* Kamera */}
           <div className="lg:col-span-2 p-3 sm:p-4 space-y-3">
-            <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/10">
-              <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover -scale-x-100" />
+            <div className="relative mx-auto rounded-xl overflow-hidden bg-black border border-white/10" style={videoBoxStyle(videoRatio)}>
+              <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-contain -scale-x-100" />
               {!camOn && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/90 text-slate-400 text-sm">
                   Kamera dimatikan
