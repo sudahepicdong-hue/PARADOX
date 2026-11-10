@@ -24,6 +24,15 @@ import type { ReportTarget } from './ReportModal';
 import type { LiveSchedule } from '../lib/db';
 import { scheduleFormat } from './LiveScheduleManager';
 
+// Pilihan topik chat ke Telegram talent. "message" = kalimat yang otomatis terisi di chat.
+const BOOKING_TOPICS = [
+  { id: 'vcs', label: 'Video Call S', message: 'memesan Video Call S' },
+  { id: 'konten', label: 'Konten VVIP', message: 'menanyakan Konten VVIP' },
+  { id: 'call', label: 'Call S', message: 'memesan Call S' },
+  { id: 'alur', label: 'CS Alur', message: 'menanyakan alur / cara pemesanan' }
+] as const;
+type BookingTopicId = (typeof BOOKING_TOPICS)[number]['id'];
+
 interface TalentDetailModalProps {
   talent: Talent;
   reviews: Review[];
@@ -66,18 +75,15 @@ export const TalentDetailModal: React.FC<TalentDetailModalProps> = ({
   const [isReviewSaving, setIsReviewSaving] = useState(false);
 
   // Selected booking preset message for Telegram
-  const [selectedTopic, setSelectedTopic] = useState<'jadwal' | 'dinner' | 'party' | 'custom'>('jadwal');
+  const [selectedTopic, setSelectedTopic] = useState<BookingTopicId>(BOOKING_TOPICS[0].id);
 
   const currentMedia = talent.media[activeMediaIndex] || talent.media[0];
 
   const getCustomTelegramUrl = () => {
-    let topicText = 'menanyakan ketersediaan jadwal meet/booking';
-    if (selectedTopic === 'dinner') topicText = 'booking VIP Dinner Companion';
-    if (selectedTopic === 'party') topicText = 'booking Private Party / Nightclub Host';
-    if (selectedTopic === 'custom') topicText = 'konsultasi custom event eksklusif';
+    const topicText = (BOOKING_TOPICS.find((t) => t.id === selectedTopic) ?? BOOKING_TOPICS[0]).message;
 
     const message = encodeURIComponent(
-      `Halo ${talent.name} (@${talent.telegramUsername}), saya melihat profil dan katalog Anda di ${brandName}.\n\nSaya ingin ${topicText}. Apakah ada jadwal available dalam waktu dekat?`
+      `Halo ${talent.name} (@${talent.telegramUsername}), saya melihat profil dan katalog Anda di ${brandName}.\n\nSaya ingin ${topicText}. Apakah bisa dibantu?`
     );
     return `https://t.me/${talent.telegramUsername}?text=${message}`;
   };
@@ -344,46 +350,19 @@ export const TalentDetailModal: React.FC<TalentDetailModalProps> = ({
                 <div className="space-y-1.5">
                   <label className="text-[11px] text-slate-300 font-medium">Pilih Topik Chat / Booking:</label>
                   <div className="grid grid-cols-2 gap-1.5 text-xs">
-                    <button
-                      onClick={() => setSelectedTopic('jadwal')}
-                      className={`p-2 rounded-lg text-left transition-colors border ${
-                        selectedTopic === 'jadwal'
-                          ? 'bg-amber-400/20 border-amber-400/50 text-amber-200'
-                          : 'bg-white/5 border-white/5 text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      Cek Jadwal Temu
-                    </button>
-                    <button
-                      onClick={() => setSelectedTopic('dinner')}
-                      className={`p-2 rounded-lg text-left transition-colors border ${
-                        selectedTopic === 'dinner'
-                          ? 'bg-amber-400/20 border-amber-400/50 text-amber-200'
-                          : 'bg-white/5 border-white/5 text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      VIP Dinner
-                    </button>
-                    <button
-                      onClick={() => setSelectedTopic('party')}
-                      className={`p-2 rounded-lg text-left transition-colors border ${
-                        selectedTopic === 'party'
-                          ? 'bg-amber-400/20 border-amber-400/50 text-amber-200'
-                          : 'bg-white/5 border-white/5 text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      Party / Clubbing Host
-                    </button>
-                    <button
-                      onClick={() => setSelectedTopic('custom')}
-                      className={`p-2 rounded-lg text-left transition-colors border ${
-                        selectedTopic === 'custom'
-                          ? 'bg-amber-400/20 border-amber-400/50 text-amber-200'
-                          : 'bg-white/5 border-white/5 text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      Konsultasi Khusus
-                    </button>
+                    {BOOKING_TOPICS.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => setSelectedTopic(t.id)}
+                        className={`p-2 rounded-lg text-left transition-colors border ${
+                          selectedTopic === t.id
+                            ? 'bg-amber-400/20 border-amber-400/50 text-amber-200'
+                            : 'bg-white/5 border-white/5 text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
