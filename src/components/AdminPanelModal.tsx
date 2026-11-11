@@ -28,7 +28,7 @@ import {
   History,
   BarChart3
 } from 'lucide-react';
-import { uploadMedia, fetchReports, setTalentPassword as setTalentLoginPassword } from '../lib/db';
+import { uploadMedia, fetchReports, setTalentPassword as setTalentLoginPassword, isOnlineNow, isOnlinePinned, setTalentOnline } from '../lib/db';
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String((e as any)?.message ?? e));
 
@@ -947,6 +947,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                           <div className="text-xs text-cyan-400 font-mono">
                             @{t.telegramUsername}
                           </div>
+                          <OnlineSwitch talent={t} onChanged={() => onTalentChanged(t.id)} />
                         </div>
                       </div>
 
@@ -1025,6 +1026,57 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+};
+
+const onlineTime = new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' });
+
+// Tombol Online / Offline per talent. "Online" dari admin bertahan terus sampai dimatikan.
+const OnlineSwitch: React.FC<{ talent: Talent; onChanged: () => Promise<void> | void }> = ({ talent, onChanged }) => {
+  const [busy, setBusy] = useState(false);
+  const online = isOnlineNow(talent);
+  const pinned = isOnlinePinned(talent);
+  const set = async (value: boolean) => {
+    if (value === online && (pinned || !value)) return;
+    setBusy(true);
+    try {
+      await setTalentOnline(talent.id, value);
+      await onChanged();
+    } catch (e) {
+      alert(`Gagal mengubah status: ${errorText(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const btn = 'px-2.5 py-1 text-[11px] font-semibold cursor-pointer disabled:opacity-60 transition-colors';
+  return (
+    <div className="pt-1.5 space-y-1">
+      <div className="inline-flex rounded-lg overflow-hidden border border-white/10">
+        <button
+          onClick={() => set(true)}
+          disabled={busy}
+          className={`${btn} ${online ? 'bg-emerald-600 text-white' : 'bg-black/40 text-slate-400 hover:bg-white/10'}`}
+        >
+          Online
+        </button>
+        <button
+          onClick={() => set(false)}
+          disabled={busy}
+          className={`${btn} ${!online ? 'bg-slate-600 text-white' : 'bg-black/40 text-slate-400 hover:bg-white/10'}`}
+        >
+          Offline
+        </button>
+      </div>
+      <div className="text-[10px] text-slate-500">
+        {busy
+          ? 'Menyimpan...'
+          : !online
+            ? 'Offline'
+            : pinned
+              ? 'Online terus (sampai dimatikan)'
+              : `Online via Telegram s/d ${onlineTime.format(new Date(talent.onlineUntil!))} WIB · klik Online agar bertahan`}
       </div>
     </div>
   );

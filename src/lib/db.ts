@@ -79,6 +79,18 @@ export const toTalent = (r: TalentRow): Talent => ({
 export const isOnlineNow = (t: Talent, now = Date.now()) =>
   Boolean(t.onlineUntil) && new Date(t.onlineUntil!).getTime() > now;
 
+// "Online terus": diatur admin, tidak mati otomatis sampai dimatikan (admin atau talent lewat /offline)
+export const ONLINE_FOREVER = '9999-12-31T00:00:00.000Z';
+export const isOnlinePinned = (t: Talent) => Boolean(t.onlineUntil) && new Date(t.onlineUntil!).getUTCFullYear() >= 9999;
+
+export async function setTalentOnline(talentId: string, online: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('talents')
+    .update({ online_until: online ? ONLINE_FOREVER : null })
+    .eq('id', talentId);
+  if (error) throw new Error(error.message);
+}
+
 // Live dianggap mati kalau browser talent tidak mengirim "detak" selama 90 detik
 // (misalnya talent menutup tab tanpa menekan "Akhiri Live").
 const LIVE_TIMEOUT_MS = 90_000;

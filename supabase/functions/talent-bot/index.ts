@@ -46,7 +46,12 @@ async function linkedTalent(chatId: number) {
   return talent;
 }
 
+const isPinned = (onlineUntil: string | null) => Boolean(onlineUntil) && new Date(onlineUntil!).getUTCFullYear() >= 9999;
+
 const statusText = (onlineUntil: string | null) => {
+  if (isPinned(onlineUntil)) {
+    return '🟢 Status Anda: <b>Online</b> (diatur admin, tetap online sampai dimatikan).\nKirim /offline kalau sudah selesai.';
+  }
   if (onlineUntil && new Date(onlineUntil) > new Date()) {
     return `🟢 Status Anda: <b>Online</b> sampai ${jakartaTime(new Date(onlineUntil))} WIB.\nKirim /offline kalau sudah selesai.`;
   }
@@ -59,7 +64,8 @@ async function setStatus(chatId: number, online: boolean) {
     await reply(chatId, 'Akun Telegram ini belum terhubung ke profil talent PARADOX.\nMinta link penghubung ke admin, lalu buka link itu.', false);
     return;
   }
-  const until = online ? new Date(Date.now() + ONLINE_HOURS * 3600_000).toISOString() : null;
+  // Kalau admin sudah set "online terus", /online tidak memperpendeknya
+  const until = !online ? null : isPinned(talent.online_until) ? talent.online_until : new Date(Date.now() + ONLINE_HOURS * 3600_000).toISOString();
   await db.from('talents').update({ online_until: until }).eq('id', talent.id);
   await reply(chatId, statusText(until));
 }
