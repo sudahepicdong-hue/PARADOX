@@ -757,3 +757,124 @@ export async function setAdminRole(email: string, makeAdmin: boolean): Promise<v
   const { error } = await supabase.rpc('admin_set_admin', { p_email: email, p_make_admin: makeAdmin });
   if (error) throw new Error(error.message);
 }
+
+// ---------------------------------------------------------------------
+// Pendaftaran calon talent ("Daftar Jadi Talent")
+// ---------------------------------------------------------------------
+export type ApplicationStatus = 'baru' | 'dihubungi' | 'diterima' | 'ditolak';
+
+export interface TalentApplication {
+  id: string;
+  name: string;
+  birthDate: string;
+  age: number;
+  telegramUsername: string;
+  city: string;
+  about: string;
+  photos: string[]; // path di bucket privat talent-applications
+  status: ApplicationStatus;
+  talentId?: string;
+  createdAt: string;
+}
+
+const APPLICATION_BUCKET = 'talent-applications';
+
+export const ageFromBirthDate = (birth: string, now = new Date()) => {
+  const [y, m, d] = birth.split('-').map(Number);
+  let age = now.getFullYear() - y;
+  if (now.getMonth() + 1 < m || (now.getMonth() + 1 === m && now.getDate() < d)) age--;
+  return age;
+};
+
+// Kirim formulir pendaftaran (boleh tanpa login). Pemeriksaan umur, foto & anti-bot dilakukan di server.
+export async function submitTalentApplication(input: {
+  name: string;
+  birthDate: string;
+  telegram: string;
+  city: string;
+  about: string;
+  photos: File[];
+  captchaToken: string;
+}): Promise<void> {
+  const form = new FormData();
+  form.set('name', input.name);
+  form.set('birthDate', input.birthDate);
+  form.set('telegram', input.telegram);
+  form.set('city', input.city);
+  form.set('about', input.about);
+  form.set('consent', 'yes');
+  form.set('captchaToken', input.captchaToken);
+  for (const p of input.photos) form.append('photos', p, p.name);
+
+  const { error } = await supabase.functions.invoke('talent-apply', { body: form });
+  if (!error) return;
+  const context = (error as { context?: Response }).context;
+  let message: string | undefined;
+  try {
+    message = context ? (await context.clone().json())?.error : undefined;
+  } catch {
+    /* bukan JSON */
+  }
+  throw new Error(message || 'Pendaftaran gagal dikirim. Periksa koneksi internet lalu coba lagi.');
+}
+
+export async function fetchApplications(): Promise<TalentApplication[]> {
+  const { data, error } = await supabase
+    .from('talent_applications')
+    .select('id, name, birth_date, telegram_username, city, about, photos, status, talent_id, created_at')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((a) => ({
+    id: a.id,
+    name: a.name,
+    birthDate: a.birth_date,
+    age: ageFromBirthDate(a.birth_date),
+    telegramUsername: a.telegram_username,
+    city: a.city,
+    about: a.about,
+    photos: a.photos ?? [],
+    status: a.status,
+    talentId: a.talent_id ?? undefined,
+    createdAt: a.created_at
+  }));
+}
+
+// Link sementara (1 jam) untuk melihat foto pendaftar
+export async function getApplicationPhotoUrls(paths: string[]): Promise<string[]> {
+  if (paths.length === 0) return [];
+  const { data, error } = await supabase.storage.from(APPLICATION_BUCKET).createSignedUrls(paths, 3600);
+  if (error) throw error;
+  return (data ?? []).map((d) => d.signedUrl ?? '');
+}
+
+export async function setApplicationStatus(id: string, status: ApplicationStatus, talentId?: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_set_application_status', {
+    p_id: id,
+    p_status: status,
+    p_talent_id: talentId ?? null
+  });
+  if (error) throw new Error(error.message);
+}
+
+// Hapus pendaftar beserta fotonya (data pribadi tidak disimpan lebih lama dari perlu)
+export async function deleteApplication(app: TalentApplication): Promise<void> {
+  if (app.photos.length) {
+    const { error } = await supabase.storage.from(APPLICATION_BUCKET).remove(app.photos);
+    if (error) throw error;
+  }
+  const { error } = await supabase.rpc('admin_delete_application', { p_id: app.id });
+  if (error) throw new Error(error.message);
+}
+
+// Salin foto pendaftar ke galeri publik talent baru (dipakai saat admin menerima pendaftar)
+export async function copyApplicationPhotosToTalent(app: TalentApplication, talentId: string): Promise<MediaItem[]> {
+  const items: MediaItem[] = [];
+  for (const [i, path] of app.photos.entries()) {
+    const { data, error } = await supabase.storage.from(APPLICATION_BUCKET).download(path);
+    if (error) throw error;
+    const file = new File([data], path.split('/').pop() || `foto-${i + 1}.jpg`, { type: data.type || 'image/jpeg' });
+    const url = await uploadMedia(file, talentId);
+    items.push({ id: `media-${Date.now()}-${i}`, type: 'image', url, title: i === 0 ? 'Foto Utama' : 'Foto' });
+  }
+  return items;
+}

@@ -13,6 +13,8 @@ const LiveBroadcastModal = React.lazy(() =>
   import('./components/LiveBroadcastModal').then((m) => ({ default: m.LiveBroadcastModal }))
 );
 import { AuthModal } from './components/AuthModal';
+import { TalentApplyModal } from './components/TalentApplyModal';
+import { JoinTalentCta } from './components/JoinTalentCta';
 import { AdminPanelModal } from './components/AdminPanelModal';
 import { BookingGuide } from './components/BookingGuide';
 import { Footer } from './components/Footer';
@@ -53,6 +55,7 @@ export default function App() {
   const [selectedDetailTalent, setSelectedDetailTalent] = useState<Talent | null>(null);
   const [selectedLiveTalent, setSelectedLiveTalent] = useState<Talent | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState<boolean>(false);
+  const [isApplyOpen, setIsApplyOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
   const [isBroadcastOpen, setIsBroadcastOpen] = useState<boolean>(false);
   const [broadcastInitialTalent, setBroadcastInitialTalent] = useState<Talent | undefined>(undefined);
@@ -504,10 +507,15 @@ export default function App() {
 
         {/* Telegram Direct Booking Guide */}
         <BookingGuide siteSettings={siteSettings} />
+
+        {/* Ajakan daftar jadi talent */}
+        <JoinTalentCta brandName={siteSettings.brandName} onApply={() => setIsApplyOpen(true)} />
       </main>
 
       {/* Footer */}
-      <Footer siteSettings={siteSettings} />
+      <Footer siteSettings={siteSettings} onApplyTalent={() => setIsApplyOpen(true)} />
+
+      {isApplyOpen && <TalentApplyModal onClose={() => setIsApplyOpen(false)} />}
 
       {/* Detail & Multi-Media Slider Modal */}
       {selectedDetailTalent && (

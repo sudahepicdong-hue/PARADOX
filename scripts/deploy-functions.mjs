@@ -23,6 +23,7 @@ const FUNCTIONS = [
   'notify-admin',
   'push-live',
   'talent-bot',
+  'talent-apply',
 ];
 const SECRET_KEYS = [
   'LIVEKIT_URL',
@@ -34,6 +35,7 @@ const SECRET_KEYS = [
   'PUBLIC_SITE_URL',
   'VAPID_PUBLIC_KEY',
   'VAPID_PRIVATE_KEY',
+  'TURNSTILE_SECRET_KEY',
 ];
 
 // Kunci notifikasi push (VAPID): dibuat SEKALI lalu disimpan di .env.

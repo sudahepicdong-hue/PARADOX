@@ -47,6 +47,17 @@ function buildMessage(event: string, d: Record<string, unknown>, siteUrl: string
         ' ke bot status talent.\n\nKalau ini bukan talent yang benar, putuskan sambungannya di Admin Studio → Kelola Talent → ikon perisai.' +
         link
       );
+    case 'talent_application':
+      return (
+        `🙋 <b>Pendaftar talent baru</b>\n\n` +
+        `Nama: <b>${esc(d.name)}</b>\n` +
+        `Umur: ${esc(d.age)} tahun` +
+        (d.city ? `\nKota: ${esc(d.city)}` : '') +
+        `\nTelegram: @${esc(d.username)}\n` +
+        `Foto: ${esc(d.photos)}\n\n` +
+        'Tinjau di Admin Studio → Pendaftar.' +
+        link
+      );
     default:
       return null;
   }

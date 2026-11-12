@@ -4,9 +4,10 @@ import { SiteSettings } from '../types/talent';
 
 interface FooterProps {
   siteSettings: SiteSettings;
+  onApplyTalent?: () => void;
 }
 
-export const Footer: React.FC<FooterProps> = ({ siteSettings }) => {
+export const Footer: React.FC<FooterProps> = ({ siteSettings, onApplyTalent }) => {
   return (
     <footer className="bg-[#05060A] border-t border-red-950/40 py-12 text-slate-400 text-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
@@ -36,6 +37,11 @@ export const Footer: React.FC<FooterProps> = ({ siteSettings }) => {
             <a href="#katalog" className="hover:text-red-400 transition-colors">Katalog Talent</a>
             <a href="#katalog" className="hover:text-red-400 transition-colors">Status Live</a>
             <a href="#booking-guide" className="hover:text-red-400 transition-colors">Cara Pemesanan</a>
+            {onApplyTalent && (
+              <button onClick={onApplyTalent} className="hover:text-red-400 transition-colors cursor-pointer">
+                Daftar Jadi Talent
+              </button>
+            )}
             <a 
               href={siteSettings.officialTelegramUrl} 
               target="_blank" 

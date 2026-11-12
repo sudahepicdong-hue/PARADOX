@@ -27,7 +27,12 @@ const ACTION_LABELS: Record<string, string> = {
   'live.ban': 'memblokir penonton dari siaran',
   'live.unban': 'membuka blokir penonton di siaran',
   'admin.grant': 'menjadikan admin:',
-  'admin.revoke': 'mencabut akses admin dari'
+  'admin.revoke': 'mencabut akses admin dari',
+  'application.baru': 'meninjau ulang pendaftar',
+  'application.dihubungi': 'menandai sudah menghubungi pendaftar',
+  'application.diterima': 'menerima pendaftar talent',
+  'application.ditolak': 'menolak pendaftar talent',
+  'application.delete': 'menghapus data pendaftar'
 };
 
 const describe = (e: AuditEntry) => {
