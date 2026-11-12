@@ -47,6 +47,14 @@ function buildMessage(event: string, d: Record<string, unknown>, siteUrl: string
         ' ke bot status talent.\n\nKalau ini bukan talent yang benar, putuskan sambungannya di Admin Studio → Kelola Talent → ikon perisai.' +
         link
       );
+    case 'talent_username_removed':
+      return (
+        `⚠️ <b>${esc(d.talent_name)}</b> MENGHAPUS username Telegram (sebelumnya @${esc(d.old_username)}).\n\n` +
+        'Tombol Chat Telegram di profilnya sekarang mati, dan username lama bisa diambil orang lain ' +
+        '(risiko penipuan atas nama talent). Status sudah dibuat Offline dan /online dikunci sampai username dipasang lagi.\n\n' +
+        'Sebaiknya hubungi talent ini, atau sembunyikan profilnya sementara.' +
+        link
+      );
     case 'talent_username_changed':
       return (
         `✏️ <b>${esc(d.talent_name)}</b> ganti username Telegram: ` +

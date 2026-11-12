@@ -43,7 +43,14 @@ const SITE_URL = (Deno.env.get('PUBLIC_SITE_URL') || 'https://paradox-oikz5.seva
 
 const NOT_LINKED = 'Akun Telegram ini belum terhubung ke profil talent PARADOX.\nKirim /start lalu pilih nama profil Anda.';
 
-const jakartaTime = (d: Date) =>
+const USERNAME_MISSING =
+  '⚠️ <b>Username Telegram Anda kosong.</b>\n\n' +
+  'Pelanggan di website tidak bisa menghubungi Anda, dan username lama bisa diambil orang lain. ' +
+  'Status Anda dibuat <b>Offline</b> dan /online tidak bisa dipakai dulu.\n\n' +
+  'Pasang username lagi: Telegram → Settings → Username. Setelah itu kirim /online lagi ke bot ini — ' +
+  'profil website otomatis ikut diperbarui.';
+
+const jakartaTime =(d: Date) =>
   new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(d);
 
 const reply = (chatId: number, text: string, withButtons = true) =>
@@ -80,6 +87,17 @@ async function setStatus(chatId: number, online: boolean) {
   if (!talent) {
     await reply(chatId, NOT_LINKED, false);
     return;
+  }
+  if (online) {
+    const { data: link } = await db
+      .from('talent_telegram_links')
+      .select('username_missing_since')
+      .eq('telegram_chat_id', chatId)
+      .maybeSingle();
+    if (link?.username_missing_since) {
+      await reply(chatId, USERNAME_MISSING, false);
+      return;
+    }
   }
   // Kalau admin sudah set "online terus", /online tidak memperpendeknya
   const until = !online ? null : isPinned(talent.online_until) ? talent.online_until : new Date(Date.now() + ONLINE_HOURS * 3600_000).toISOString();
@@ -317,10 +335,28 @@ async function sendLogin(chatId: number) {
 async function syncUsername(chatId: number, newUsername: string | undefined) {
   const { data: link } = await db
     .from('talent_telegram_links')
-    .select('talent_id, telegram_username')
+    .select('talent_id, telegram_username, username_missing_since')
     .eq('telegram_chat_id', chatId)
     .maybeSingle();
-  if (!link || !newUsername || normUser(link.telegram_username) === normUser(newUsername)) return;
+  if (!link) return;
+
+  // Username dihapus: link "Chat Telegram" di website mati & username lama bisa diambil orang lain
+  if (!newUsername) {
+    if (link.username_missing_since) return; // sudah ditangani sebelumnya
+    const { data: talent } = await db.from('talents').select('name, telegram_username').eq('id', link.talent_id).maybeSingle();
+    // Hanya penting kalau profil website memakai akun ini untuk pelanggan
+    if (!talent || !link.telegram_username || normUser(talent.telegram_username) !== normUser(link.telegram_username)) return;
+    await db.from('talent_telegram_links').update({ username_missing_since: new Date().toISOString() }).eq('telegram_chat_id', chatId);
+    await db.from('talents').update({ online_until: null }).eq('id', link.talent_id);
+    await reply(chatId, USERNAME_MISSING, false);
+    await notifyAdmin('talent_username_removed', { talent_name: talent.name, old_username: link.telegram_username });
+    return;
+  }
+
+  if (link.username_missing_since) {
+    await db.from('talent_telegram_links').update({ username_missing_since: null }).eq('telegram_chat_id', chatId);
+  }
+  if (normUser(link.telegram_username) === normUser(newUsername)) return;
 
   const old = link.telegram_username;
   await db.from('talent_telegram_links').update({ telegram_username: newUsername }).eq('telegram_chat_id', chatId);
