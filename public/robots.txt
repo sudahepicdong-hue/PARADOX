@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://paradox-oikz5.sevalla.page/sitemap.xml
