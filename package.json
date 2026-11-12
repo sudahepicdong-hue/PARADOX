@@ -11,7 +11,9 @@
     "lint": "tsc --noEmit",
     "db:setup": "node --env-file=.env scripts/setup-db.mjs",
     "functions:deploy": "node --env-file=.env scripts/deploy-functions.mjs",
-    "telegram:chat-id": "node --env-file=.env scripts/telegram-chat-id.mjs"
+    "telegram:chat-id": "node --env-file=.env scripts/telegram-chat-id.mjs",
+    "captcha:on": "node --env-file=.env scripts/captcha.mjs on",
+    "captcha:off": "node --env-file=.env scripts/captcha.mjs off"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "1.1.1",

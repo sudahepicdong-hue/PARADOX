@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { fetchTalentLoginOptions, talentLoginEmail } from '../lib/db';
 import { UserAccount } from '../types/talent';
 import { X, User, Lock, Mail, Shield, Sparkles, Radio } from 'lucide-react';
 import { signIn, signUp, requestPasswordReset } from '../lib/auth';
+import { Turnstile, TurnstileHandle, TURNSTILE_SITE_KEY } from './Turnstile';
 
 interface AuthModalProps {
   onClose: () => void;
@@ -14,6 +15,8 @@ interface AuthModalProps {
 export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess }) => {
   const [activeRole, setActiveRole] = useState<'user' | 'talent' | 'admin'>('user');
   const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const captchaRef = useRef<TurnstileHandle>(null);
   const [name, setName] = useState('');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -50,11 +53,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess })
       setErrorMessage('Pilih nama talent Anda dulu.');
       return;
     }
+    if (TURNSTILE_SITE_KEY && !captchaToken) {
+      setErrorMessage('Tunggu sebentar, verifikasi bukan bot belum selesai (centang kotak di atas tombol).');
+      return;
+    }
+    const token = captchaToken ?? undefined;
     const email = activeRole === 'talent' ? talentLoginEmail(selectedTalentId) : identifier.trim().toLowerCase();
     setIsLoading(true);
     try {
       if (isForgot) {
-        await requestPasswordReset(email);
+        await requestPasswordReset(email, token);
         setInfoMessage('Jika email terdaftar, link reset kata sandi sudah dikirim. Cek inbox / folder spam Anda.');
         return;
       }
@@ -64,7 +72,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess })
           setErrorMessage('Silakan masukkan nama lengkap atau alias Anda.');
           return;
         }
-        const { account, needsConfirmation } = await signUp(name.trim(), email, password);
+        const { account, needsConfirmation } = await signUp(name.trim(), email, password, token);
         if (needsConfirmation || !account) {
           setInfoMessage('Pendaftaran berhasil! Cek email Anda dan klik link konfirmasi, lalu masuk.');
           setMode('login');
@@ -76,7 +84,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess })
         return;
       }
 
-      const account = await signIn(email, password, activeRole);
+      const account = await signIn(email, password, activeRole, token);
       onLoginSuccess(account);
       onClose();
     } catch (err) {
@@ -84,6 +92,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess })
       setErrorMessage(activeRole === 'talent' && msg === 'Email atau kata sandi salah.' ? 'Password salah.' : msg);
     } finally {
       setIsLoading(false);
+      // Token verifikasi hanya bisa dipakai sekali
+      captchaRef.current?.reset();
     }
   };
 
@@ -317,6 +327,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess })
               {infoMessage}
             </p>
           )}
+
+          {TURNSTILE_SITE_KEY && <Turnstile ref={captchaRef} onToken={setCaptchaToken} />}
 
           <button
             type="submit"

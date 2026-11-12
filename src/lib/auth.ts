@@ -31,8 +31,8 @@ const ROLE_LABEL: Record<Role, string> = {
 };
 
 // Login email + password. Kalau role akun tidak cocok dengan tab yang dipilih, langsung logout lagi.
-export async function signIn(email: string, password: string, expectedRole: Role): Promise<UserAccount> {
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+export async function signIn(email: string, password: string, expectedRole: Role, captchaToken?: string): Promise<UserAccount> {
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password, options: { captchaToken } });
   if (error) throw new Error(translateError(error.message));
 
   const account = await loadAccount(data.user);
@@ -47,12 +47,13 @@ export async function signIn(email: string, password: string, expectedRole: Role
 export async function signUp(
   name: string,
   email: string,
-  password: string
+  password: string,
+  captchaToken?: string
 ): Promise<{ account: UserAccount | null; needsConfirmation: boolean }> {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { name } },
+    options: { data: { name }, captchaToken },
   });
   if (error) throw new Error(translateError(error.message));
 
@@ -67,9 +68,10 @@ export async function signOut() {
 }
 
 // Kirim email berisi link reset kata sandi. Link akan kembali ke website ini.
-export async function requestPasswordReset(email: string): Promise<void> {
+export async function requestPasswordReset(email: string, captchaToken?: string): Promise<void> {
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: window.location.origin,
+    captchaToken,
   });
   if (error) throw new Error(translateError(error.message));
 }
@@ -82,6 +84,7 @@ export async function updatePassword(newPassword: string): Promise<void> {
 
 function translateError(message: string): string {
   const m = message.toLowerCase();
+  if (m.includes('captcha')) return 'Verifikasi bukan bot gagal atau kedaluwarsa. Centang ulang kotak verifikasi lalu coba lagi.';
   if (m.includes('invalid login credentials')) return 'Email atau kata sandi salah.';
   if (m.includes('email not confirmed')) return 'Email belum dikonfirmasi. Cek inbox email Anda.';
   if (m.includes('already registered')) return 'Email ini sudah terdaftar. Silakan masuk.';
