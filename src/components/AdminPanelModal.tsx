@@ -78,6 +78,19 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   // Pendaftar yang sedang dibuatkan profil talent (ditandai "diterima" setelah profil disimpan)
   const [pendingApplication, setPendingApplication] = useState<TalentApplication | null>(null);
   const [verifyingTalentId, setVerifyingTalentId] = useState<string | null>(null);
+  // Cari & urutkan daftar talent di tab Kelola Katalog
+  const [listSearch, setListSearch] = useState('');
+  const [listSort, setListSort] = useState<'name' | 'name-desc' | 'live' | 'rating' | 'likes'>('name');
+  const listQuery = listSearch.trim().toLowerCase();
+  const listedTalents = talents
+    .filter((t) => !listQuery || [t.name, t.alias, t.city, t.telegramUsername].some((v) => v?.toLowerCase().includes(listQuery)))
+    .sort((a, b) => {
+      if (listSort === 'name-desc') return b.name.localeCompare(a.name, 'id');
+      if (listSort === 'live') return Number(b.isLive) - Number(a.isLive) || a.name.localeCompare(b.name, 'id');
+      if (listSort === 'rating') return b.ratingAverage - a.ratingAverage;
+      if (listSort === 'likes') return b.likesCount - a.likesCount;
+      return a.name.localeCompare(b.name, 'id');
+    });
   const [openReportCount, setOpenReportCount] = useState<number | null>(null);
   const verifyingTalent = talents.find((t) => t.id === verifyingTalentId) || null;
 
@@ -986,8 +999,33 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   </button>
                 </div>
 
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    value={listSearch}
+                    onChange={(e) => setListSearch(e.target.value)}
+                    placeholder="Cari nama, kota, atau username..."
+                    className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-black/60 border border-white/10 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-red-500"
+                  />
+                  <select
+                    value={listSort}
+                    onChange={(e) => setListSort(e.target.value as typeof listSort)}
+                    aria-label="Urutkan daftar talent"
+                    className="px-3 py-2 rounded-xl bg-black/60 border border-white/10 text-sm text-slate-200 focus:outline-none focus:border-red-500 cursor-pointer"
+                  >
+                    <option value="name">Nama A-Z</option>
+                    <option value="name-desc">Nama Z-A</option>
+                    <option value="live">Sedang Live dulu</option>
+                    <option value="rating">Rating Terbaik</option>
+                    <option value="likes">Terpopuler</option>
+                  </select>
+                </div>
+
+                {listedTalents.length === 0 && (
+                  <p className="text-sm text-slate-500 py-6 text-center">Tidak ada talent yang cocok dengan "{listSearch}".</p>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {talents.map((t) => (
+                  {listedTalents.map((t) => (
                     <div
                       key={t.id}
                       className="p-4 rounded-xl bg-black/40 border border-white/10 flex gap-4 items-center justify-between"

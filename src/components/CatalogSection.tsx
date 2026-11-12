@@ -25,7 +25,7 @@ export const CatalogSection: React.FC<CatalogSectionProps> = ({
 }) => {
   const [onlyLive, setOnlyLive] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [sortBy, setSortBy] = useState<'rating' | 'likes' | 'name'>('rating');
+  const [sortBy, setSortBy] = useState<'rating' | 'likes' | 'name' | 'name-desc'>('rating');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   // Filter / pencarian / urutan berubah: mulai lagi dari 12 teratas
@@ -50,7 +50,8 @@ export const CatalogSection: React.FC<CatalogSectionProps> = ({
     .sort((a, b) => {
       if (sortBy === 'rating') return b.ratingAverage - a.ratingAverage;
       if (sortBy === 'likes') return b.likesCount - a.likesCount;
-      if (sortBy === 'name') return a.name.localeCompare(b.name);
+      if (sortBy === 'name') return a.name.localeCompare(b.name, 'id');
+      if (sortBy === 'name-desc') return b.name.localeCompare(a.name, 'id');
       return 0;
     });
 
@@ -118,6 +119,7 @@ export const CatalogSection: React.FC<CatalogSectionProps> = ({
               <option value="rating">Rating Terbaik</option>
               <option value="likes">Terpopuler</option>
               <option value="name">Nama A-Z</option>
+              <option value="name-desc">Nama Z-A</option>
             </select>
 
             {(onlyLive || searchQuery.trim() || sortBy !== 'rating') && (
