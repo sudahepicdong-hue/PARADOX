@@ -1,5 +1,6 @@
 // Semua baca/tulis data website ke Supabase ada di file ini.
 import { supabase } from './supabase';
+import { compressImage } from './compressImage';
 import { Talent, Review, SiteSettings, MediaItem, TalentDocument, Report, ReportReason } from '../types/talent';
 import { DEFAULT_SITE_SETTINGS } from '../data/initialTalents';
 
@@ -309,7 +310,8 @@ const randomFileName = (file: File) => {
 };
 
 // File disimpan di folder <talentId>/ supaya talent hanya bisa mengubah file miliknya sendiri.
-export async function uploadMedia(file: File, talentId: string): Promise<string> {
+export async function uploadMedia(original: File, talentId: string): Promise<string> {
+  const file = await compressImage(original);
   if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
     throw new Error(`Ukuran file maksimal ${MAX_UPLOAD_MB} MB.`);
   }
