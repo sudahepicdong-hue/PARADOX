@@ -39,6 +39,8 @@ import {
   setTalentOnline,
   TalentApplication,
   fetchApplications,
+  fetchTalentLinkRequests,
+  TalentLinkRequest,
   copyApplicationPhotosToTalent,
   setApplicationStatus
 } from '../lib/db';
@@ -103,6 +105,13 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       .then((list) => setNewApplicantCount(list.filter((a) => a.status === 'baru').length))
       .catch(() => {});
   }, []);
+
+  // Permintaan absen Telegram yang menunggu persetujuan (dimuat ulang setiap kembali ke daftar talent)
+  const [linkRequests, setLinkRequests] = useState<TalentLinkRequest[]>([]);
+  useEffect(() => {
+    if (activeTab !== 'talents' || verifyingTalentId) return;
+    fetchTalentLinkRequests().then(setLinkRequests).catch(() => {});
+  }, [activeTab, verifyingTalentId]);
 
   // Site Settings Form state
   const [settingsForm, setSettingsForm] = useState<SiteSettings>({ ...siteSettings });
@@ -998,6 +1007,25 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                     <span>Tambah Talent Baru</span>
                   </button>
                 </div>
+
+                {linkRequests.length > 0 && (
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-2">
+                    <p className="text-xs text-amber-200 font-semibold">
+                      🔐 {linkRequests.length} permintaan absen Telegram menunggu persetujuan
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {linkRequests.map((r) => (
+                        <button
+                          key={r.id}
+                          onClick={() => setVerifyingTalentId(r.talent_id)}
+                          className="px-3 py-1.5 rounded-lg text-xs bg-black/40 border border-amber-500/30 text-amber-100 hover:bg-amber-500/20 cursor-pointer"
+                        >
+                          {r.talent_name} ← {r.telegram_username ? `@${r.telegram_username}` : r.telegram_name || 'tanpa username'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex flex-col sm:flex-row gap-2">
                   <input

@@ -47,6 +47,16 @@ function buildMessage(event: string, d: Record<string, unknown>, siteUrl: string
         ' ke bot status talent.\n\nKalau ini bukan talent yang benar, putuskan sambungannya di Admin Studio → Kelola Talent → ikon perisai.' +
         link
       );
+    case 'talent_link_request':
+      return (
+        '🔐 <b>Permintaan absen Telegram</b>\n\n' +
+        `Akun Telegram ${d.username ? `@${esc(d.username)}` : '(tanpa username)'}` +
+        (d.name ? ` (${esc(d.name)})` : '') +
+        ` mengaku sebagai talent <b>${esc(d.talent_name)}</b>.\n` +
+        (d.profile_username ? `Username di profil: @${esc(d.profile_username)}\n` : '') +
+        '\nSetujui atau tolak di Admin Studio → Kelola Talent → ikon perisai.' +
+        link
+      );
     case 'talent_application':
       return (
         `🙋 <b>Pendaftar talent baru</b>\n\n` +

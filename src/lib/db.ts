@@ -639,6 +639,34 @@ export interface TalentTelegramInfo {
   linked_at: string | null;
   pending_expires_at: string | null;
   bot_ready: boolean;
+  bot_username: string | null;
+  // Permintaan dari link umum yang menunggu persetujuan (username Telegram beda dengan profil)
+  requests: { id: string; username: string | null; name: string | null; created_at: string }[];
+}
+
+export interface TalentLinkRequest {
+  id: string;
+  talent_id: string;
+  talent_name: string;
+  telegram_username: string | null;
+  telegram_name: string | null;
+  created_at: string;
+}
+
+export async function fetchTalentLinkRequests(): Promise<TalentLinkRequest[]> {
+  const { data, error } = await supabase.rpc('admin_talent_link_requests');
+  if (error) throw error;
+  return (data ?? []) as TalentLinkRequest[];
+}
+
+export async function approveTalentLinkRequest(id: string): Promise<void> {
+  const { error } = await supabase.rpc('approve_talent_link_request', { p_id: id });
+  if (error) throw error;
+}
+
+export async function rejectTalentLinkRequest(id: string): Promise<void> {
+  const { error } = await supabase.rpc('reject_talent_link_request', { p_id: id });
+  if (error) throw error;
 }
 
 export async function fetchTalentTelegramInfo(talentId: string): Promise<TalentTelegramInfo> {
