@@ -29,8 +29,14 @@ jobs:
     steps:
       - name: Cek secrets
         run: |
-          if [ -z "$DB" ]; then echo "::error::Secret SUPABASE_DB_URL belum diisi"; exit 1; fi
-          if [ ${#BACKUP_PASSWORD} -lt 16 ]; then echo "::error::Secret BACKUP_PASSWORD belum diisi / terlalu pendek"; exit 1; fi
+          # Rapikan isi secret kalau ikut tersalin dengan "NAMA=", tanda kutip, atau spasi
+          clean() { printf '%s' "$1" | tr -d '\r\n' | sed -E "s/^[[:space:]]*[A-Z_]+=//; s/^[[:space:]]*[\"']//; s/[\"'][[:space:]]*$//; s/^[[:space:]]+//; s/[[:space:]]+$//"; }
+          db=$(clean "$DB"); pw=$(clean "$BACKUP_PASSWORD")
+          echo "::add-mask::$db"
+          echo "::add-mask::$pw"
+          case "$db" in postgres://*|postgresql://*) ;; *) echo "::error::Secret SUPABASE_DB_URL harus diawali postgresql://"; exit 1;; esac
+          if [ ${#pw} -lt 16 ]; then echo "::error::Secret BACKUP_PASSWORD belum diisi / terlalu pendek"; exit 1; fi
+          { echo "DB=$db"; echo "BACKUP_PASSWORD=$pw"; } >> "$GITHUB_ENV"
 
       - name: Pasang pg_dump 17
         run: |
