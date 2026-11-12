@@ -142,6 +142,25 @@ export default function App() {
     return () => data.subscription.unsubscribe();
   }, []);
 
+  // Login talent lewat tombol dari bot absen Telegram (/login): ?tl=<token sekali pakai>
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tokenHash = params.get('tl');
+    if (!tokenHash) return;
+    // Hapus token dari alamat supaya tidak tersimpan di riwayat browser
+    params.delete('tl');
+    const rest = params.toString();
+    window.history.replaceState(null, '', window.location.pathname + (rest ? `?${rest}` : '') + window.location.hash);
+    supabase.auth
+      .verifyOtp({ token_hash: tokenHash, type: 'magiclink' })
+      .then(async ({ data, error }) => {
+        if (error || !data.user) throw error ?? new Error('no user');
+        setCurrentUser(await loadAccount(data.user));
+        showToast('✅ Berhasil masuk lewat Telegram.');
+      })
+      .catch(() => showToast('Link login sudah dipakai atau kedaluwarsa. Ketik /login lagi di bot Telegram.', 6000));
+  }, []);
+
   // Daftar like ikut akun yang login
   useEffect(() => {
     setLikedTalentIds(currentUser?.likedTalentIds ?? []);

@@ -28,11 +28,18 @@ const tg = (method: string, body: Record<string, unknown>) =>
 const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 const BUTTONS = {
-  inline_keyboard: [[
-    { text: '🟢 Online', callback_data: 'online' },
-    { text: '⚫ Offline', callback_data: 'offline' },
-  ]],
+  inline_keyboard: [
+    [
+      { text: '🟢 Online', callback_data: 'online' },
+      { text: '⚫ Offline', callback_data: 'offline' },
+    ],
+    [{ text: '🔑 Login Website', callback_data: 'login' }],
+  ],
 };
+
+// Harus sama dengan TALENT_EMAIL_DOMAIN di src/lib/db.ts & admin-talent-account
+const TALENT_EMAIL_DOMAIN = 'talent.paradox.invalid';
+const SITE_URL = (Deno.env.get('PUBLIC_SITE_URL') || 'https://paradox-oikz5.sevalla.page').replace(/\/+$/, '');
 
 const NOT_LINKED = 'Akun Telegram ini belum terhubung ke profil talent PARADOX.\nKirim /start lalu pilih nama profil Anda.';
 
@@ -98,7 +105,8 @@ const welcomeText = (name: string, onlineUntil: string | null) =>
   'Mulai sekarang atur status Anda di website PARADOX dari sini:\n' +
   '• /online — tampil Online di website\n' +
   '• /offline — tampil Offline\n' +
-  '• /status — cek status sekarang\n\n' +
+  '• /status — cek status sekarang\n' +
+  '• /login — masuk ke website tanpa password\n\n' +
   `Kalau lupa /offline, status otomatis kembali Offline setelah ${ONLINE_HOURS} jam.\n\n` +
   statusText(onlineUntil);
 
@@ -245,6 +253,64 @@ async function handleStart(chatId: number, code: string | undefined, from: From)
   await linkChat(chatId, talent, from.username);
 }
 
+// Akun login website milik talent; dibuat otomatis kalau belum ada
+async function loginEmailFor(talent: TalentRow): Promise<string> {
+  const { data: rows } = await db.from('profiles').select('id, email').eq('role', 'talent').eq('talent_id', talent.id).limit(1);
+  if (rows?.[0]?.email) return rows[0].email;
+
+  const email = `${talent.id.toLowerCase().replace(/[^a-z0-9-]/g, '-')}@${TALENT_EMAIL_DOMAIN}`;
+  const password = crypto.randomUUID() + crypto.randomUUID(); // acak & tidak dipakai: talent masuk lewat /login
+  let userId: string;
+  const { data: created, error } = await db.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { name: talent.name },
+  });
+  if (error) {
+    const { data: existing } = await db.from('profiles').select('id').eq('email', email).limit(1);
+    if (!existing?.length) throw error;
+    userId = existing[0].id;
+  } else {
+    userId = created.user.id;
+  }
+  const { error: linkErr } = await db
+    .from('profiles')
+    .update({ role: 'talent', talent_id: talent.id, name: talent.name })
+    .eq('id', userId);
+  if (linkErr) throw linkErr;
+  return email;
+}
+
+// /login: kirim tombol masuk website (sekali pakai) ke talent yang sudah terhubung
+async function sendLogin(chatId: number) {
+  const talent = await linkedTalent(chatId);
+  if (!talent) {
+    await reply(chatId, NOT_LINKED, false);
+    return;
+  }
+  try {
+    const email = await loginEmailFor(talent);
+    const { data, error } = await db.auth.admin.generateLink({ type: 'magiclink', email });
+    const hash = data?.properties?.hashed_token;
+    if (error || !hash) throw error ?? new Error('no token');
+    await tg('sendMessage', {
+      chat_id: chatId,
+      parse_mode: 'HTML',
+      text:
+        `🔑 Tombol masuk website untuk <b>${esc(talent.name)}</b>.\n\n` +
+        'Hanya bisa dipakai <b>1 kali</b> dan berlaku 1 jam. Jangan teruskan ke orang lain.\n' +
+        'Kalau sudah tidak berlaku, ketik /login lagi.',
+      reply_markup: {
+        inline_keyboard: [[{ text: '➡️ Masuk ke Website', url: `${SITE_URL}/?tl=${encodeURIComponent(hash)}` }]],
+      },
+    });
+  } catch (e) {
+    console.error('login link error', e);
+    await reply(chatId, '❌ Gagal membuat tombol login. Coba lagi sebentar, atau hubungi admin PARADOX.');
+  }
+}
+
 // Kabar dari database: permintaan disetujui / ditolak admin
 async function handleInternal(event: string, data: Record<string, unknown>) {
   const chatId = Number(data.chat_id);
@@ -283,6 +349,7 @@ Deno.serve(async (req) => {
       await tg('answerCallbackQuery', { callback_query_id: cq.id });
       if (!chatId || cq.message?.chat?.type !== 'private') return new Response('ok');
       if (data === 'online' || data === 'offline') await setStatus(chatId, data === 'online');
+      else if (data === 'login') await sendLogin(chatId);
       else if (data.startsWith('pick:')) await handlePick(chatId, cq.message?.message_id, data.slice(5), cq.from ?? {});
       else if (data === 'repick') {
         await db.from('talent_link_requests').delete().eq('telegram_chat_id', chatId);
@@ -301,6 +368,7 @@ Deno.serve(async (req) => {
     if (cmd === '/start') await handleStart(chatId, arg, msg.from ?? {});
     else if (cmd === '/online') await setStatus(chatId, true);
     else if (cmd === '/offline') await setStatus(chatId, false);
+    else if (cmd === '/login') await sendLogin(chatId);
     else if (cmd === '/status') {
       const talent = await linkedTalent(chatId);
       if (talent) await reply(chatId, statusText(talent.online_until));
@@ -308,7 +376,7 @@ Deno.serve(async (req) => {
     } else if (!(await linkedTalent(chatId))) {
       await sendPicker(chatId);
     } else {
-      await reply(chatId, 'Perintah yang tersedia:\n/online — tampil Online\n/offline — tampil Offline\n/status — cek status');
+      await reply(chatId, 'Perintah yang tersedia:\n/online — tampil Online\n/offline — tampil Offline\n/status — cek status\n/login — masuk ke website');
     }
   } catch (e) {
     console.error('talent-bot error', e);
