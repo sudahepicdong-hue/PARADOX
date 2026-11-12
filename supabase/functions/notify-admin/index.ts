@@ -47,6 +47,16 @@ function buildMessage(event: string, d: Record<string, unknown>, siteUrl: string
         ' ke bot status talent.\n\nKalau ini bukan talent yang benar, putuskan sambungannya di Admin Studio → Kelola Talent → ikon perisai.' +
         link
       );
+    case 'talent_username_changed':
+      return (
+        `✏️ <b>${esc(d.talent_name)}</b> ganti username Telegram: ` +
+        `${d.old_username ? `@${esc(d.old_username)}` : '(kosong)'} → @${esc(d.new_username)}\n\n` +
+        (d.profile_updated
+          ? 'Username di profil website sudah otomatis diganti, tombol Chat Telegram pelanggan ikut pakai username baru.'
+          : `Username di profil website TIDAK diganti (profil memakai ${d.profile_username ? `@${esc(d.profile_username)}` : 'username lain'}). ` +
+            'Ganti manual di Admin Studio kalau perlu.') +
+        link
+      );
     case 'talent_link_request':
       return (
         '🔐 <b>Permintaan absen Telegram</b>\n\n' +

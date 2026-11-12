@@ -311,6 +311,35 @@ async function sendLogin(chatId: number) {
   }
 }
 
+// Talent ganti username Telegram: sambungan tetap (pakai ID), username dicatat ulang.
+// Username di profil website ikut diganti HANYA kalau sebelumnya sama dengan akun ini
+// (kalau talent sengaja pakai akun lain untuk pelanggan, jangan ditimpa).
+async function syncUsername(chatId: number, newUsername: string | undefined) {
+  const { data: link } = await db
+    .from('talent_telegram_links')
+    .select('talent_id, telegram_username')
+    .eq('telegram_chat_id', chatId)
+    .maybeSingle();
+  if (!link || !newUsername || normUser(link.telegram_username) === normUser(newUsername)) return;
+
+  const old = link.telegram_username;
+  await db.from('talent_telegram_links').update({ telegram_username: newUsername }).eq('telegram_chat_id', chatId);
+
+  const { data: talent } = await db.from('talents').select('name, telegram_username').eq('id', link.talent_id).maybeSingle();
+  if (!talent) return;
+  const profileUpdated = Boolean(old) && normUser(talent.telegram_username) === normUser(old);
+  if (profileUpdated) {
+    await db.from('talents').update({ telegram_username: newUsername }).eq('id', link.talent_id);
+  }
+  await notifyAdmin('talent_username_changed', {
+    talent_name: talent.name,
+    old_username: old,
+    new_username: newUsername,
+    profile_updated: profileUpdated,
+    profile_username: normUser(talent.telegram_username) || null,
+  });
+}
+
 // Kabar dari database: permintaan disetujui / ditolak admin
 async function handleInternal(event: string, data: Record<string, unknown>) {
   const chatId = Number(data.chat_id);
@@ -348,6 +377,7 @@ Deno.serve(async (req) => {
       const data = String(cq.data ?? '');
       await tg('answerCallbackQuery', { callback_query_id: cq.id });
       if (!chatId || cq.message?.chat?.type !== 'private') return new Response('ok');
+      await syncUsername(chatId, cq.from?.username);
       if (data === 'online' || data === 'offline') await setStatus(chatId, data === 'online');
       else if (data === 'login') await sendLogin(chatId);
       else if (data.startsWith('pick:')) await handlePick(chatId, cq.message?.message_id, data.slice(5), cq.from ?? {});
@@ -364,6 +394,7 @@ Deno.serve(async (req) => {
     const text: string = (msg.text ?? '').trim();
     const [cmdRaw, arg] = text.split(/\s+/, 2);
     const cmd = cmdRaw.toLowerCase().replace(/@.*$/, '');
+    await syncUsername(chatId, msg.from?.username);
 
     if (cmd === '/start') await handleStart(chatId, arg, msg.from ?? {});
     else if (cmd === '/online') await setStatus(chatId, true);
