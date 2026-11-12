@@ -140,7 +140,7 @@ async function linkChat(chatId: number, talent: TalentRow, username: string | un
   });
   await db.from('talent_link_requests').delete().eq('telegram_chat_id', chatId);
   await reply(chatId, welcomeText(talent.name, talent.online_until));
-  await notifyAdmin('talent_linked', { talent_name: talent.name, username });
+  await notifyAdmin('talent_linked', { talent_name: talent.name, username, telegram_id: chatId });
 }
 
 // Daftar profil yang belum terhubung, sebagai tombol
@@ -332,24 +332,44 @@ async function sendLogin(chatId: number) {
 // Talent ganti username Telegram: sambungan tetap (pakai ID), username dicatat ulang.
 // Username di profil website ikut diganti HANYA kalau sebelumnya sama dengan akun ini
 // (kalau talent sengaja pakai akun lain untuk pelanggan, jangan ditimpa).
-async function syncUsername(chatId: number, newUsername: string | undefined) {
+async function syncUsername(chatId: number, from: From) {
+  const newUsername = from.username;
+  const fullName = [from.first_name, from.last_name].filter(Boolean).join(' ').slice(0, 80) || null;
   const { data: link } = await db
     .from('talent_telegram_links')
-    .select('talent_id, telegram_username, username_missing_since')
+    .select('talent_id, telegram_username, telegram_name, username_missing_since')
     .eq('telegram_chat_id', chatId)
     .maybeSingle();
   if (!link) return;
 
+  if (fullName && fullName !== link.telegram_name) {
+    await db.from('talent_telegram_links').update({ telegram_name: fullName }).eq('telegram_chat_id', chatId);
+  }
+  const history = (oldU: string | null, newU: string | null) =>
+    db.from('talent_username_history').insert({ talent_id: link.talent_id, telegram_chat_id: chatId, old_username: oldU, new_username: newU });
+  const who = { telegram_id: chatId, telegram_name: fullName };
+
   // Username dihapus: link "Chat Telegram" di website mati & username lama bisa diambil orang lain
   if (!newUsername) {
-    if (link.username_missing_since) return; // sudah ditangani sebelumnya
+    if (link.username_missing_since || !link.telegram_username) return; // sudah ditangani / memang tidak pernah ada
     const { data: talent } = await db.from('talents').select('name, telegram_username').eq('id', link.talent_id).maybeSingle();
-    // Hanya penting kalau profil website memakai akun ini untuk pelanggan
-    if (!talent || !link.telegram_username || normUser(talent.telegram_username) !== normUser(link.telegram_username)) return;
-    await db.from('talent_telegram_links').update({ username_missing_since: new Date().toISOString() }).eq('telegram_chat_id', chatId);
-    await db.from('talents').update({ online_until: null }).eq('id', link.talent_id);
-    await reply(chatId, USERNAME_MISSING, false);
-    await notifyAdmin('talent_username_removed', { talent_name: talent.name, old_username: link.telegram_username });
+    if (!talent) return;
+    await history(link.telegram_username, null);
+    const profileAffected = normUser(talent.telegram_username) === normUser(link.telegram_username);
+    if (profileAffected) {
+      // Simpan username terakhir supaya profil bisa ikut diperbarui saat username dipasang lagi
+      await db.from('talent_telegram_links').update({ username_missing_since: new Date().toISOString() }).eq('telegram_chat_id', chatId);
+      await db.from('talents').update({ online_until: null }).eq('id', link.talent_id);
+      await reply(chatId, USERNAME_MISSING, false);
+    } else {
+      await db.from('talent_telegram_links').update({ telegram_username: null }).eq('telegram_chat_id', chatId);
+    }
+    await notifyAdmin('talent_username_removed', {
+      talent_name: talent.name,
+      old_username: link.telegram_username,
+      profile_affected: profileAffected,
+      ...who,
+    });
     return;
   }
 
@@ -360,6 +380,7 @@ async function syncUsername(chatId: number, newUsername: string | undefined) {
 
   const old = link.telegram_username;
   await db.from('talent_telegram_links').update({ telegram_username: newUsername }).eq('telegram_chat_id', chatId);
+  await history(old, newUsername);
 
   const { data: talent } = await db.from('talents').select('name, telegram_username').eq('id', link.talent_id).maybeSingle();
   if (!talent) return;
@@ -373,6 +394,7 @@ async function syncUsername(chatId: number, newUsername: string | undefined) {
     new_username: newUsername,
     profile_updated: profileUpdated,
     profile_username: normUser(talent.telegram_username) || null,
+    ...who,
   });
 }
 
@@ -383,6 +405,12 @@ async function handleInternal(event: string, data: Record<string, unknown>) {
   if (event === 'link_approved') {
     const talent = await linkedTalent(chatId);
     if (talent) await reply(chatId, '🎉 Admin menyetujui permintaan Anda.\n\n' + welcomeText(talent.name, talent.online_until));
+  } else if (event === 'admin_message') {
+    await tg('sendMessage', {
+      chat_id: chatId,
+      parse_mode: 'HTML',
+      text: `📩 <b>Pesan dari admin PARADOX:</b>\n\n${esc(data.text)}\n\n<i>Balas langsung di chat ini, pesan Anda akan diteruskan ke admin.</i>`,
+    });
   } else if (event === 'link_rejected') {
     await tg('sendMessage', {
       chat_id: chatId,
@@ -413,7 +441,7 @@ Deno.serve(async (req) => {
       const data = String(cq.data ?? '');
       await tg('answerCallbackQuery', { callback_query_id: cq.id });
       if (!chatId || cq.message?.chat?.type !== 'private') return new Response('ok');
-      await syncUsername(chatId, cq.from?.username);
+      await syncUsername(chatId, cq.from ?? {});
       if (data === 'online' || data === 'offline') await setStatus(chatId, data === 'online');
       else if (data === 'login') await sendLogin(chatId);
       else if (data.startsWith('pick:')) await handlePick(chatId, cq.message?.message_id, data.slice(5), cq.from ?? {});
@@ -430,7 +458,7 @@ Deno.serve(async (req) => {
     const text: string = (msg.text ?? '').trim();
     const [cmdRaw, arg] = text.split(/\s+/, 2);
     const cmd = cmdRaw.toLowerCase().replace(/@.*$/, '');
-    await syncUsername(chatId, msg.from?.username);
+    await syncUsername(chatId, msg.from ?? {});
 
     if (cmd === '/start') await handleStart(chatId, arg, msg.from ?? {});
     else if (cmd === '/online') await setStatus(chatId, true);
@@ -440,10 +468,27 @@ Deno.serve(async (req) => {
       const talent = await linkedTalent(chatId);
       if (talent) await reply(chatId, statusText(talent.online_until));
       else await reply(chatId, NOT_LINKED, false);
-    } else if (!(await linkedTalent(chatId))) {
-      await sendPicker(chatId);
     } else {
-      await reply(chatId, 'Perintah yang tersedia:\n/online — tampil Online\n/offline — tampil Offline\n/status — cek status\n/login — masuk ke website');
+      const talent = await linkedTalent(chatId);
+      if (!talent) {
+        await sendPicker(chatId);
+      } else if (cmd.startsWith('/')) {
+        await reply(chatId, 'Perintah yang tersedia:\n/online — tampil Online\n/offline — tampil Offline\n/status — cek status\n/login — masuk ke website');
+      } else {
+        // Pesan biasa dari talent -> teruskan ke admin
+        const body = text || (msg.caption ?? '').trim();
+        if (!body) {
+          await reply(chatId, 'Untuk saat ini bot hanya bisa meneruskan pesan teks ke admin.', false);
+        } else {
+          await notifyAdmin('talent_message', {
+            talent_name: talent.name,
+            username: msg.from?.username,
+            telegram_id: chatId,
+            text: body.slice(0, 3000),
+          });
+          await reply(chatId, '✅ Pesan Anda sudah diteruskan ke admin PARADOX.', false);
+        }
+      }
     }
   } catch (e) {
     console.error('talent-bot error', e);

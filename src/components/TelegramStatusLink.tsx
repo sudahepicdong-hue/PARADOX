@@ -6,6 +6,7 @@ import {
   unlinkTalentTelegram,
   approveTalentLinkRequest,
   rejectTalentLinkRequest,
+  messageTalentViaBot,
   TalentTelegramInfo
 } from '../lib/db';
 
@@ -23,6 +24,35 @@ export const TelegramStatusLink: React.FC<{ talentId: string; talentName: string
   const [link, setLink] = useState<{ url: string; expires_at: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [copiedGeneral, setCopiedGeneral] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
+  const [msgText, setMsgText] = useState('');
+  const [msgSent, setMsgSent] = useState(false);
+
+  const copyText = async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedId(true);
+      setTimeout(() => setCopiedId(false), 2000);
+    } catch {
+      /* salin manual */
+    }
+  };
+
+  const sendMessage = async () => {
+    setBusy(true);
+    setError('');
+    setMsgSent(false);
+    try {
+      await messageTalentViaBot(talentId, msgText);
+      setMsgText('');
+      setMsgSent(true);
+      setTimeout(() => setMsgSent(false), 4000);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -137,6 +167,69 @@ export const TelegramStatusLink: React.FC<{ talentId: string; talentName: string
               </span>
             )}
           </div>
+
+          {info.linked && info.username_missing_since && (
+            <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-[11px] text-rose-200">
+              ⚠️ Talent menghapus username Telegram sejak {dateFmt.format(new Date(info.username_missing_since))}. Tombol Chat
+              Telegram di profilnya mati dan /online dikunci. Hubungi talent lewat kotak pesan di bawah.
+            </div>
+          )}
+
+          {info.linked && info.telegram_id && (
+            <div className="p-3 rounded-lg bg-white/[0.03] border border-white/10 space-y-3">
+              <div className="text-xs text-slate-300 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span>
+                    🆔 ID Telegram: <span className="font-mono text-white">{info.telegram_id}</span>
+                  </span>
+                  <button
+                    onClick={() => copyText(String(info.telegram_id))}
+                    className="px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 text-[11px] cursor-pointer"
+                  >
+                    {copiedId ? 'Tersalin' : 'Salin'}
+                  </button>
+                </div>
+                {info.telegram_name && <div>Nama akun: {info.telegram_name}</div>}
+                <p className="text-[11px] text-slate-500">
+                  ID tidak berubah walau talent ganti/hapus username. Simpan sebagai bukti kalau perlu melapor ke Telegram.
+                </p>
+              </div>
+
+              {info.history.length > 0 && (
+                <div className="text-[11px] text-slate-400 space-y-0.5">
+                  <div className="text-slate-300 font-semibold">Riwayat username:</div>
+                  {info.history.map((h, i) => (
+                    <div key={i}>
+                      {dateFmt.format(new Date(h.at))}: {h.old ? `@${h.old}` : '(kosong)'} →{' '}
+                      {h.new ? `@${h.new}` : <span className="text-rose-300">dihapus</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <div className="text-[11px] text-slate-300 font-semibold">Kirim pesan ke talent lewat bot</div>
+                <textarea
+                  value={msgText}
+                  onChange={(e) => setMsgText(e.target.value)}
+                  rows={3}
+                  maxLength={3000}
+                  placeholder={`Tulis pesan untuk ${talentName}... (balasannya masuk ke Telegram admin)`}
+                  className="w-full px-3 py-2 rounded-lg bg-black/60 border border-white/10 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500"
+                />
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={sendMessage}
+                    disabled={busy || !msgText.trim()}
+                    className="px-3 py-2 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <Send className="w-3.5 h-3.5" /> Kirim lewat bot
+                  </button>
+                  {msgSent && <span className="text-[11px] text-emerald-300">✅ Terkirim</span>}
+                </div>
+              </div>
+            </div>
+          )}
 
           {info.requests?.length > 0 && (
             <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 space-y-2">

@@ -17,6 +17,13 @@ const DOC_TYPES: Record<string, string> = { ktp: 'KTP', paspor: 'Paspor', sim: '
 const esc = (s: unknown) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+// Identitas permanen akun Telegram talent (ID tidak berubah walau username diganti/dihapus)
+const identity = (d: Record<string, unknown>) =>
+  d.telegram_id
+    ? `\n\n🆔 ID Telegram: <code>${esc(d.telegram_id)}</code>` +
+      (d.telegram_name ? `\nNama akun: ${esc(d.telegram_name)}` : '')
+    : '';
+
 function buildMessage(event: string, d: Record<string, unknown>, siteUrl: string): string | null {
   const link = siteUrl ? `\n\n<a href="${esc(siteUrl)}">Buka website</a>` : '';
   switch (event) {
@@ -45,14 +52,18 @@ function buildMessage(event: string, d: Record<string, unknown>, siteUrl: string
         `🔗 <b>${esc(d.talent_name)}</b> menghubungkan akun Telegram` +
         (d.username ? ` (@${esc(d.username)})` : '') +
         ' ke bot status talent.\n\nKalau ini bukan talent yang benar, putuskan sambungannya di Admin Studio → Kelola Talent → ikon perisai.' +
+        identity(d) +
         link
       );
     case 'talent_username_removed':
       return (
         `⚠️ <b>${esc(d.talent_name)}</b> MENGHAPUS username Telegram (sebelumnya @${esc(d.old_username)}).\n\n` +
-        'Tombol Chat Telegram di profilnya sekarang mati, dan username lama bisa diambil orang lain ' +
-        '(risiko penipuan atas nama talent). Status sudah dibuat Offline dan /online dikunci sampai username dipasang lagi.\n\n' +
-        'Sebaiknya hubungi talent ini, atau sembunyikan profilnya sementara.' +
+        (d.profile_affected
+          ? 'Tombol Chat Telegram di profilnya sekarang mati, dan username lama bisa diambil orang lain ' +
+            '(risiko penipuan atas nama talent). Status sudah dibuat Offline dan /online dikunci sampai username dipasang lagi.\n\n' +
+            'Sebaiknya hubungi talent ini, atau sembunyikan profilnya sementara.'
+          : 'Profil website memakai username lain, jadi tombol Chat Telegram pelanggan tidak terpengaruh.') +
+        identity(d) +
         link
       );
     case 'talent_username_changed':
@@ -63,7 +74,16 @@ function buildMessage(event: string, d: Record<string, unknown>, siteUrl: string
           ? 'Username di profil website sudah otomatis diganti, tombol Chat Telegram pelanggan ikut pakai username baru.'
           : `Username di profil website TIDAK diganti (profil memakai ${d.profile_username ? `@${esc(d.profile_username)}` : 'username lain'}). ` +
             'Ganti manual di Admin Studio kalau perlu.') +
+        identity(d) +
         link
+      );
+    case 'talent_message':
+      return (
+        `💬 <b>Pesan dari talent ${esc(d.talent_name)}</b>` +
+        (d.username ? ` (@${esc(d.username)})` : ' (tanpa username)') +
+        ` lewat bot absen:\n\n${esc(d.text)}\n\n` +
+        'Balas lewat Admin Studio → Kelola Talent → ikon perisai → Kirim pesan.' +
+        identity(d)
       );
     case 'talent_link_request':
       return (

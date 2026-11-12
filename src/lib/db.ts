@@ -642,6 +642,17 @@ export interface TalentTelegramInfo {
   bot_username: string | null;
   // Permintaan dari link umum yang menunggu persetujuan (username Telegram beda dengan profil)
   requests: { id: string; username: string | null; name: string | null; created_at: string }[];
+  username_missing_since: string | null;
+  // Hanya terisi untuk admin: identitas permanen akun Telegram & riwayat username
+  telegram_id: number | null;
+  telegram_name: string | null;
+  history: { old: string | null; new: string | null; at: string }[];
+}
+
+// Admin kirim pesan ke talent lewat bot absen (pakai ID Telegram, tetap sampai walau username dihapus)
+export async function messageTalentViaBot(talentId: string, text: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_message_talent', { p_talent_id: talentId, p_text: text });
+  if (error) throw error;
 }
 
 export interface TalentLinkRequest {
