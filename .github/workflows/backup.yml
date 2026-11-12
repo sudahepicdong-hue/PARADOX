@@ -1,0 +1,91 @@
+# Backup otomatis PARADOX setiap malam (02:00 WIB).
+# Isi: database (akun, talent, booking, ulasan, riwayat admin) + foto/video talent.
+# File backup DIKUNCI password (repo ini publik) dan disimpan 30 hari di tab Actions.
+# Secrets yang wajib diisi di GitHub (Settings > Secrets and variables > Actions):
+#   SUPABASE_DB_URL  - sama dengan di .env
+#   BACKUP_PASSWORD  - sama dengan di .env (simpan juga di tempat lain! tanpa ini backup tidak bisa dibuka)
+# Membuka backup di laptop: npm run backup:open -- <file .enc>
+name: Backup harian
+
+on:
+  schedule:
+    - cron: '0 19 * * *' # 19:00 UTC = 02:00 WIB
+  workflow_dispatch: # tombol "Run workflow" untuk backup manual
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      DB: ${{ secrets.SUPABASE_DB_URL }}
+      BACKUP_PASSWORD: ${{ secrets.BACKUP_PASSWORD }}
+    steps:
+      - name: Cek secrets
+        run: |
+          if [ -z "$DB" ]; then echo "::error::Secret SUPABASE_DB_URL belum diisi"; exit 1; fi
+          if [ ${#BACKUP_PASSWORD} -lt 16 ]; then echo "::error::Secret BACKUP_PASSWORD belum diisi / terlalu pendek"; exit 1; fi
+
+      - name: Pasang pg_dump 17
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common > /dev/null
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y > /dev/null
+          sudo apt-get install -y -qq postgresql-client-17 > /dev/null
+
+      - name: Backup database
+        run: |
+          set -euo pipefail
+          BIN=/usr/lib/postgresql/17/bin
+          mkdir -p backup
+          # Struktur tabel (untuk referensi; pemulihan utama lewat migrations di repo)
+          $BIN/pg_dump "$DB" --schema=public --schema-only --no-owner --no-privileges -f backup/schema_public.sql
+          # Semua data: tabel website + akun login + daftar file
+          # (token sesi login tidak ikut: tidak perlu & sensitif)
+          $BIN/pg_dump "$DB" --data-only --schema=public --schema=auth --schema=storage --no-owner --no-privileges \
+            --exclude-table-data=auth.sessions --exclude-table-data=auth.refresh_tokens \
+            --exclude-table-data=auth.audit_log_entries --exclude-table-data=auth.flow_state \
+            --exclude-table-data=auth.one_time_tokens --exclude-table-data=auth.mfa_challenges \
+            -f backup/data.sql
+          ls -la backup
+
+      - name: Backup foto & video talent
+        run: |
+          set -euo pipefail
+          # project ref diambil dari user koneksi pooler: postgres.<ref>
+          REF=$(python3 -c "import os,urllib.parse as u; print(u.urlparse(os.environ['DB']).username.split('.',1)[1])")
+          BASE="https://$REF.supabase.co/storage/v1/object/public/talent-media"
+          /usr/lib/postgresql/17/bin/psql "$DB" -At -c "select name from storage.objects where bucket_id='talent-media' order by name" > media-list.txt
+          n=0
+          while IFS= read -r name; do
+            [ -z "$name" ] && continue
+            mkdir -p "backup/media/$(dirname "$name")"
+            curl -fsS --retry 3 "$BASE/$name" -o "backup/media/$name"
+            n=$((n+1))
+          done < media-list.txt
+          echo "file media: $n"
+          du -sh backup
+
+      - name: Kunci dengan password
+        run: |
+          set -euo pipefail
+          FILE="paradox-backup-$(TZ=Asia/Jakarta date +%F).tar.gz.enc"
+          tar -czf - backup | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:BACKUP_PASSWORD -out "$FILE"
+          rm -rf backup media-list.txt
+          ls -la "$FILE"
+          echo "FILE=$FILE" >> "$GITHUB_ENV"
+
+      - name: Simpan (30 hari)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.FILE }}
+          path: ${{ env.FILE }}
+          retention-days: 30
+          compression-level: 0
+          if-no-files-found: error

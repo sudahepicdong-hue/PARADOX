@@ -13,7 +13,8 @@
     "functions:deploy": "node --env-file=.env scripts/deploy-functions.mjs",
     "telegram:chat-id": "node --env-file=.env scripts/telegram-chat-id.mjs",
     "captcha:on": "node --env-file=.env scripts/captcha.mjs on",
-    "captcha:off": "node --env-file=.env scripts/captcha.mjs off"
+    "captcha:off": "node --env-file=.env scripts/captcha.mjs off",
+    "backup:open": "node --env-file=.env scripts/backup-open.mjs"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "1.1.1",
