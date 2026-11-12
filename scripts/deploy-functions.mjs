@@ -197,10 +197,22 @@ async function setupTalentBot() {
       { command: 'online', description: 'Tampil Online di website PARADOX' },
       { command: 'offline', description: 'Tampil Offline' },
       { command: 'status', description: 'Cek status sekarang' },
+      { command: 'login', description: 'Masuk ke website tanpa password' },
+      { command: 'start', description: 'Pilih / lihat profil talent Anda' },
     ],
   });
+  // Teks di layar kosong sebelum talent menekan Start
   await api('setMyDescription', {
-    description: 'Bot status talent PARADOX. Hubungkan akun lewat link dari admin, lalu kirim /online atau /offline.',
+    description:
+      'Bot absen khusus talent PARADOX.\n\n' +
+      '1. Tekan Start, lalu pilih nama profil Anda.\n' +
+      '2. Kirim /online saat siap menerima chat, /offline saat selesai.\n' +
+      '3. Kirim /login untuk masuk ke website tanpa password.\n\n' +
+      'Status otomatis kembali Offline setelah 12 jam.',
+  });
+  // Teks singkat di halaman profil bot
+  await api('setMyShortDescription', {
+    short_description: 'Bot absen talent PARADOX: atur Online/Offline & login website tanpa password.',
   });
 
   if (process.env.SUPABASE_DB_URL) {
