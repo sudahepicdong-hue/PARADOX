@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Talent } from '../types/talent';
 import { TalentCard } from './TalentCard';
-import { Search, Radio, RotateCcw } from 'lucide-react';
+import { Search, Radio, RotateCcw, ChevronDown } from 'lucide-react';
+
+// 12 = baris penuh di desktop (3 kolom) maupun HP (2 kolom)
+const PAGE_SIZE = 12;
 
 interface CatalogSectionProps {
   talents: Talent[];
@@ -23,6 +26,10 @@ export const CatalogSection: React.FC<CatalogSectionProps> = ({
   const [onlyLive, setOnlyLive] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'rating' | 'likes' | 'name'>('rating');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  // Filter / pencarian / urutan berubah: mulai lagi dari 12 teratas
+  useEffect(() => setVisibleCount(PAGE_SIZE), [onlyLive, searchQuery, sortBy]);
 
   // Filter and Sort logic
   const filteredTalents = talents
@@ -129,7 +136,14 @@ export const CatalogSection: React.FC<CatalogSectionProps> = ({
       {/* Catalog Results Header */}
       <div className="flex items-center justify-between text-xs text-slate-400">
         <div>
-          Menampilkan <span className="font-semibold text-white font-mono">{filteredTalents.length}</span> talent terverifikasi
+          Menampilkan{' '}
+          <span className="font-semibold text-white font-mono">{Math.min(visibleCount, filteredTalents.length)}</span>
+          {filteredTalents.length > visibleCount && (
+            <>
+              {' '}dari <span className="font-semibold text-white font-mono">{filteredTalents.length}</span>
+            </>
+          )}{' '}
+          talent terverifikasi
           {onlyLive && ' (Sedang Live)'}
         </div>
       </div>
@@ -149,7 +163,7 @@ export const CatalogSection: React.FC<CatalogSectionProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6 lg:gap-8">
-          {filteredTalents.map((talent) => (
+          {filteredTalents.slice(0, visibleCount).map((talent) => (
             <TalentCard
               key={talent.id}
               talent={talent}
@@ -160,6 +174,21 @@ export const CatalogSection: React.FC<CatalogSectionProps> = ({
               brandName={brandName}
             />
           ))}
+        </div>
+      )}
+
+      {filteredTalents.length > visibleCount && (
+        <div className="flex flex-col items-center gap-2 pt-2">
+          <button
+            onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}
+            className="w-full sm:w-auto px-8 py-3 rounded-xl font-semibold text-sm text-white bg-white/5 hover:bg-white/10 border border-white/15 hover:border-red-500/50 transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <span>Lihat lebih banyak</span>
+            <ChevronDown className="w-4 h-4" />
+          </button>
+          <p className="text-[11px] text-slate-500">
+            {filteredTalents.length - visibleCount} talent lainnya
+          </p>
         </div>
       )}
     </section>
