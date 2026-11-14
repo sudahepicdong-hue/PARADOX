@@ -125,7 +125,8 @@ const welcomeText = (name: string, onlineUntil: string | null) =>
   '• /offline — tampil Offline\n' +
   '• /status — cek status sekarang\n' +
   '• /login — masuk ke website tanpa password\n\n' +
-  `Kalau lupa /offline, status otomatis kembali Offline setelah ${ONLINE_HOURS} jam.\n\n` +
+  `Kalau lupa /offline, status otomatis kembali Offline setelah ${ONLINE_HOURS} jam.\n` +
+  'Setiap jam 07.00 WIB semua status di-reset jadi Offline, jadi absen /online lagi tiap hari.\n\n' +
   statusText(onlineUntil);
 
 // Hubungkan akun Telegram ke talent (1 akun = 1 talent, 1 talent = 1 akun)
@@ -398,8 +399,35 @@ async function syncUsername(chatId: number, from: From) {
   });
 }
 
+// Reset harian 07.00 WIB (dari pg_cron): kabari semua talent yang terhubung bahwa status
+// sudah Offline, dan ingatkan untuk absen /online lagi.
+async function sendDailyReminders() {
+  const { data: links } = await db.from('talent_telegram_links').select('telegram_chat_id, talent_id');
+  if (!links?.length) return;
+  const { data: talents } = await db
+    .from('talents')
+    .select('id, name')
+    .in('id', links.map((l) => l.talent_id));
+  const names = new Map((talents ?? []).map((t) => [t.id, t.name]));
+  for (const l of links) {
+    const name = names.get(l.talent_id);
+    if (!name) continue;
+    await reply(
+      Number(l.telegram_chat_id),
+      `🌅 Selamat pagi, <b>${esc(name)}</b>!\n\n` +
+        'Status Anda sekarang <b>Offline</b> (reset otomatis setiap jam 07.00 WIB).\n\n' +
+        '⏰ Jangan lupa absen hari ini: tekan <b>🟢 Online</b> di bawah atau kirim /online kalau sudah siap menerima chat.'
+    );
+    await new Promise((r) => setTimeout(r, 50)); // jaga batas kirim Telegram
+  }
+}
+
 // Kabar dari database: permintaan disetujui / ditolak admin
 async function handleInternal(event: string, data: Record<string, unknown>) {
+  if (event === 'daily_reset') {
+    await sendDailyReminders();
+    return;
+  }
   const chatId = Number(data.chat_id);
   if (!chatId) return;
   if (event === 'link_approved') {

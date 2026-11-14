@@ -208,7 +208,7 @@ async function setupTalentBot() {
       '1. Tekan Start, lalu pilih nama profil Anda.\n' +
       '2. Kirim /online saat siap menerima chat, /offline saat selesai.\n' +
       '3. Kirim /login untuk masuk ke website tanpa password.\n\n' +
-      'Status otomatis kembali Offline setelah 12 jam.',
+      'Status otomatis kembali Offline setelah 12 jam, dan di-reset Offline setiap jam 07.00 WIB.',
   });
   // Teks singkat di halaman profil bot
   await api('setMyShortDescription', {
