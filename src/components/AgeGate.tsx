@@ -34,7 +34,11 @@ export const AgeGate: React.FC<AgeGateProps> = ({ brandName, logoUrl, onConfirm 
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/30 text-red-300 text-xs font-bold">
           <ShieldAlert className="w-4 h-4" /> KHUSUS DEWASA 18+
         </div>
-        <h1 className="font-display text-2xl font-bold text-white">Apakah Anda berusia 18 tahun atau lebih?</h1>
+        {/* Judul utama halaman (dibaca Google): nama & isi website, bukan pertanyaan umur */}
+        <h1 className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
+          {brandName} VIP · Katalog Talent Eksklusif
+        </h1>
+        <h2 className="font-display text-2xl font-bold text-white">Apakah Anda berusia 18 tahun atau lebih?</h2>
         <p className="text-sm text-slate-400">
           Website {brandName} hanya untuk pengunjung berusia 18 tahun ke atas. Dengan masuk, Anda menyatakan sudah cukup umur.
         </p>
@@ -56,6 +60,12 @@ export const AgeGate: React.FC<AgeGateProps> = ({ brandName, logoUrl, onConfirm 
           Tidak, keluar
         </button>
       </div>
+      {/* Ringkasan isi website untuk pengunjung & mesin pencari */}
+      <p className="text-[11px] leading-relaxed text-slate-500 pt-2 border-t border-white/5">
+        {brandName} VIP adalah katalog talent eksklusif dan terverifikasi. Lihat profil lengkap dengan foto & video,
+        status online dan siaran live, jadwal, rating serta ulasan pelanggan, lalu hubungi dan booking langsung lewat
+        Telegram.
+      </p>
     </div>
   </div>
 );
