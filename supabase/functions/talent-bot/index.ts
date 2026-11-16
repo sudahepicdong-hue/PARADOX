@@ -409,16 +409,21 @@ async function sendDailyReminders() {
     .select('id, name')
     .in('id', links.map((l) => l.talent_id));
   const names = new Map((talents ?? []).map((t) => [t.id, t.name]));
-  for (const l of links) {
-    const name = names.get(l.talent_id);
-    if (!name) continue;
-    await reply(
-      Number(l.telegram_chat_id),
-      `🌅 Selamat pagi, <b>${esc(name)}</b>!\n\n` +
-        'Status Anda sekarang <b>Offline</b> (reset otomatis setiap jam 07.00 WIB).\n\n' +
-        '⏰ Jangan lupa absen hari ini: tekan <b>🟢 Online</b> di bawah atau kirim /online kalau sudah siap menerima chat.'
+  // Kirim per 20 pesan sekaligus (batas Telegram ±30 pesan/detik)
+  for (let i = 0; i < links.length; i += 20) {
+    await Promise.all(
+      links.slice(i, i + 20).map((l) => {
+        const name = names.get(l.talent_id);
+        if (!name) return undefined;
+        return reply(
+          Number(l.telegram_chat_id),
+          `🌅 Selamat pagi, <b>${esc(name)}</b>!\n\n` +
+            'Status Anda sekarang <b>Offline</b> (reset otomatis setiap jam 07.00 WIB).\n\n' +
+            '⏰ Jangan lupa absen hari ini: tekan <b>🟢 Online</b> di bawah atau kirim /online kalau sudah siap menerima chat.'
+        );
+      })
     );
-    await new Promise((r) => setTimeout(r, 50)); // jaga batas kirim Telegram
+    if (i + 20 < links.length) await new Promise((r) => setTimeout(r, 1000));
   }
 }
 
@@ -459,7 +464,13 @@ Deno.serve(async (req) => {
     const update = await req.json();
 
     if (typeof update.internal === 'string') {
-      await handleInternal(update.internal, update.data ?? {});
+      // Pengingat harian dikirim di latar belakang: database cukup dapat jawaban "ok" cepat
+      // (pg_net memutus permintaan setelah 15 detik).
+      const job = handleInternal(update.internal, update.data ?? {});
+      // deno-lint-ignore no-explicit-any
+      const rt = (globalThis as any).EdgeRuntime;
+      if (update.internal === 'daily_reset' && rt?.waitUntil) rt.waitUntil(job);
+      else await job;
       return new Response('ok');
     }
 
