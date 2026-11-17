@@ -39,7 +39,7 @@ const BUTTONS = {
 
 // Harus sama dengan TALENT_EMAIL_DOMAIN di src/lib/db.ts & admin-talent-account
 const TALENT_EMAIL_DOMAIN = 'talent.paradox.invalid';
-const SITE_URL = (Deno.env.get('PUBLIC_SITE_URL') || 'https://paradox-oikz5.sevalla.page').replace(/\/+$/, '');
+const SITE_URL = (Deno.env.get('PUBLIC_SITE_URL') || 'https://paradoxnight.org').replace(/\/+$/, '');
 
 const NOT_LINKED = 'Akun Telegram ini belum terhubung ke profil talent PARADOX.\nKirim /start lalu pilih nama profil Anda.';
 
