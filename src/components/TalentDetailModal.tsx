@@ -78,7 +78,7 @@ export const TalentDetailModal: React.FC<TalentDetailModalProps> = ({
     const topicText = (bookingTopics.find((t) => t.label === selectedTopic) ?? bookingTopics[0]).message;
 
     const message = encodeURIComponent(
-      `Halo ${talent.name} (@${talent.telegramUsername}), saya melihat profil dan katalog Anda di ${brandName}.\n\nSaya ingin ${topicText}. Apakah bisa dibantu?`
+      `Halo kak ${talent.name}, aku lihat profil kakak di ${brandName}.\n\nAku mau ${topicText}. Lagi available ga kak? 😊`
     );
     return `https://t.me/${talent.telegramUsername}?text=${message}`;
   };

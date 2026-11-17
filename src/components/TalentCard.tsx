@@ -29,7 +29,7 @@ export const TalentCard: React.FC<TalentCardProps> = ({
 
   // Telegram direct contact link with custom message
   const telegramMessage = encodeURIComponent(
-    `Halo ${talent.name} (@${talent.telegramUsername}), saya melihat profil dan katalog Anda di ${brandName}. Apakah sedang available untuk konsultasi/booking?`
+    `Halo kak ${talent.name}, aku lihat profil kakak di ${brandName}. Lagi available ga kak? 😊`
   );
   const telegramDirectUrl = `https://t.me/${talent.telegramUsername}?text=${telegramMessage}`;
 
