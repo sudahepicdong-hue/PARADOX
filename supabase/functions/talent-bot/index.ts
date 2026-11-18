@@ -383,17 +383,14 @@ async function syncUsername(chatId: number, from: From) {
   await db.from('talent_telegram_links').update({ telegram_username: newUsername }).eq('telegram_chat_id', chatId);
   await history(old, newUsername);
 
+  // Profil website ikut diganti otomatis oleh trigger database (private.sync_profile_telegram_username)
   const { data: talent } = await db.from('talents').select('name, telegram_username').eq('id', link.talent_id).maybeSingle();
   if (!talent) return;
-  const profileUpdated = Boolean(old) && normUser(talent.telegram_username) === normUser(old);
-  if (profileUpdated) {
-    await db.from('talents').update({ telegram_username: newUsername }).eq('id', link.talent_id);
-  }
   await notifyAdmin('talent_username_changed', {
     talent_name: talent.name,
     old_username: old,
     new_username: newUsername,
-    profile_updated: profileUpdated,
+    profile_updated: normUser(talent.telegram_username) === normUser(newUsername),
     profile_username: normUser(talent.telegram_username) || null,
     ...who,
   });
