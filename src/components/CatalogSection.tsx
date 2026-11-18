@@ -24,18 +24,21 @@ export const CatalogSection: React.FC<CatalogSectionProps> = ({
   brandName = 'PARADOX'
 }) => {
   const [onlyLive, setOnlyLive] = useState<boolean>(false);
+  const [onlyOnline, setOnlyOnline] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'rating' | 'likes' | 'name' | 'name-desc'>('rating');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   // Filter / pencarian / urutan berubah: mulai lagi dari 12 teratas
-  useEffect(() => setVisibleCount(PAGE_SIZE), [onlyLive, searchQuery, sortBy]);
+  useEffect(() => setVisibleCount(PAGE_SIZE), [onlyLive, onlyOnline, searchQuery, sortBy]);
 
   // Filter and Sort logic
   const filteredTalents = talents
     .filter((talent) => {
       // Live filter
       if (onlyLive && !talent.isLive) return false;
+      // Online filter (talent yang sedang live juga dianggap online)
+      if (onlyOnline && !talent.isOnline && !talent.isLive) return false;
       // Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -55,8 +58,11 @@ export const CatalogSection: React.FC<CatalogSectionProps> = ({
       return 0;
     });
 
+  const onlineCount = talents.filter((t) => t.isOnline || t.isLive).length;
+
   const handleResetFilters = () => {
     setOnlyLive(false);
+    setOnlyOnline(false);
     setSearchQuery('');
     setSortBy('rating');
   };
@@ -74,7 +80,7 @@ export const CatalogSection: React.FC<CatalogSectionProps> = ({
           </h2>
         </div>
         <p className="text-sm text-slate-400 max-w-md">
-          Pilih talent berdasarkan status Live atau cari profil favorit Anda. Klik untuk melihat foto, video, atau langsung hubungi via Telegram.
+          Pilih talent berdasarkan status Online / Live atau cari profil favorit Anda. Klik untuk melihat foto, video, atau langsung hubungi via Telegram.
         </p>
       </div>
 
@@ -97,7 +103,22 @@ export const CatalogSection: React.FC<CatalogSectionProps> = ({
           {/* Controls: Live Toggle & Sort Dropdown */}
           <div className="grid grid-cols-2 md:flex items-center gap-2 md:flex-wrap">
             <button
+              onClick={() => setOnlyOnline(!onlyOnline)}
+              aria-pressed={onlyOnline}
+              className={`h-11 md:h-auto px-3 md:px-3.5 py-2 rounded-xl text-sm md:text-xs font-medium border flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                onlyOnline
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-md shadow-emerald-900/30'
+                  : 'bg-black/40 text-slate-300 border-white/10 hover:text-white'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${onlyOnline ? 'bg-emerald-400 animate-pulse' : 'bg-emerald-500/70'}`} />
+              <span>Online</span>
+              <span className="font-mono text-[11px] opacity-70">({onlineCount})</span>
+            </button>
+
+            <button
               onClick={() => setOnlyLive(!onlyLive)}
+              aria-pressed={onlyLive}
               className={`h-11 md:h-auto px-3 md:px-3.5 py-2 rounded-xl text-sm md:text-xs font-medium border flex items-center justify-center gap-2 transition-all cursor-pointer ${
                 onlyLive
                   ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 shadow-md shadow-rose-900/30'
@@ -114,7 +135,7 @@ export const CatalogSection: React.FC<CatalogSectionProps> = ({
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
               aria-label="Urutkan talent"
-              className="h-11 md:h-auto min-w-0 px-3 py-2 rounded-xl bg-black/60 border border-white/10 text-sm md:text-xs text-slate-200 focus:outline-none focus:border-red-500 cursor-pointer"
+              className="col-span-2 md:col-span-1 h-11 md:h-auto min-w-0 px-3 py-2 rounded-xl bg-black/60 border border-white/10 text-sm md:text-xs text-slate-200 focus:outline-none focus:border-red-500 cursor-pointer"
             >
               <option value="rating">Rating Terbaik</option>
               <option value="likes">Terpopuler</option>
@@ -122,7 +143,7 @@ export const CatalogSection: React.FC<CatalogSectionProps> = ({
               <option value="name-desc">Nama Z-A</option>
             </select>
 
-            {(onlyLive || searchQuery.trim() || sortBy !== 'rating') && (
+            {(onlyLive || onlyOnline || searchQuery.trim() || sortBy !== 'rating') && (
               <button
                 onClick={handleResetFilters}
                 className="col-span-2 md:col-span-1 text-xs text-slate-400 hover:text-red-400 flex items-center justify-center gap-1.5 transition-colors px-2 py-1.5 cursor-pointer"
@@ -146,6 +167,7 @@ export const CatalogSection: React.FC<CatalogSectionProps> = ({
             </>
           )}{' '}
           talent terverifikasi
+          {onlyOnline && ' (Sedang Online)'}
           {onlyLive && ' (Sedang Live)'}
         </div>
       </div>
